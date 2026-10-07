@@ -16,8 +16,8 @@ st.sidebar.markdown("---")
 st.sidebar.header("⚡ VIP Pro Access")
 st.sidebar.markdown("Unlock real-time push alerts & deep multi-year whale filters.")
 
-# YOUR BITCOIN WALLET (You can change this address in code anytime from your phone!)
-MY_BTC_WALLET = "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh"  # Replace with your actual BTC address later
+# YOUR REAL BITCOIN WALLET
+MY_BTC_WALLET = "18t9FDLShbkgXZfiaFzSuqFCBgxTitL9aC"
 
 with st.sidebar.expander("💳 Upgrade via Bitcoin"):
     st.markdown("**Lifetime VIP Access:** `0.001 BTC`")
