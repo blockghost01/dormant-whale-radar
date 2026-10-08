@@ -11,20 +11,15 @@ st.set_page_config(
     layout="centered"
 )
 
-# --- CUSTOM CSS FOR A "REAL WEBSITE" DESIGN ---
+# --- CUSTOM CSS FOR PROFESSIONAL WEB DESIGN ---
 st.markdown("""
     <style>
-    /* Global App Background */
     .stApp {
         background-color: #07090e;
         color: #f3f4f6;
     }
-    
-    /* Hide default streamlit headers/footers for a clean website feel */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
-    
-    /* Sleek Card Container */
     .web-card {
         background-color: #111522;
         border: 1px solid #1f293d;
@@ -33,8 +28,6 @@ st.markdown("""
         margin-bottom: 16px;
         box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
     }
-    
-    /* Terminal Console Box */
     .terminal-box {
         background-color: #030712;
         border: 1px solid #1e293b;
@@ -45,8 +38,6 @@ st.markdown("""
         font-size: 13px;
         line-height: 1.5;
     }
-    
-    /* Section Titles */
     .section-title {
         font-size: 18px;
         font-weight: 700;
@@ -64,7 +55,7 @@ st.markdown("""
     </div>
 """, unsafe_allow_html=True)
 
-# --- CONTROLS BAR (CLEAN & VISIBLE) ---
+# --- CONTROLS BAR ---
 st.markdown('<div class="web-card">', unsafe_allow_html=True)
 st.markdown('<div class="section-title">⚙️ Intelligence Parameters</div>', unsafe_allow_html=True)
 
@@ -128,15 +119,32 @@ else:
 
 st.markdown('</div>', unsafe_allow_html=True)
 
-# --- VIP PRO ACCESS & MONETIZATION SECTION ---
+# --- VIP PRO ACCESS & PAYMENT TRACKING SECTION ---
 st.markdown('<div class="web-card">', unsafe_allow_html=True)
-st.markdown('<div class="section-title">⚡ VIP Pro Access & Direct Node Integration</div>', unsafe_allow_html=True)
-st.markdown("Unlock high-priority push webhooks, real-time SMS alerts, and deep historical wallet intelligence.")
+st.markdown('<div class="section-title">⚡ VIP Pro Access & Payment Verification</div>', unsafe_allow_html=True)
+st.markdown("Unlock high-priority push webhooks, real-time alerts, and deep historical wallet intelligence.")
 
 st.markdown("**Lifetime VIP Access Cost:** `0.001 BTC`")
-st.markdown("Send Bitcoin directly to your secure developer wallet below:")
+st.markdown("1. Send Bitcoin to your secure developer wallet:")
 st.code("18t9FDLShbkgXZfiaFzSuqFCBgxTitL9aC", language="text")
-st.markdown("<span style='font-size: 12px; color: #9ca3af;'>*After completing your transfer, forward your transaction hash to activate your terminal privileges.*</span>", unsafe_allow_html=True)
+
+# Quick link for you to check your wallet on Mempool.space
+st.markdown("[🔍 Click here to check your wallet incoming transactions on Mempool.space](https://mempool.space/address/18t9FDLShbkgXZfiaFzSuqFCBgxTitL9aC)")
+
+st.markdown("---")
+st.markdown("**2. Submit your Payment Details for Activation:**")
+
+# Payment Submission Form
+with st.form("vip_payment_form"):
+    user_txid = st.text_input("Bitcoin Transaction ID (TXID)")
+    user_contact = st.text_input("Your Telegram Handle or Email")
+    submit_payment = st.form_submit_button("🚀 Submit for VIP Activation")
+
+    if submit_payment:
+        if user_txid and user_contact:
+            st.success(f"✅ Payment reference received! TXID: `{user_txid[:10]}...` Contact: `{user_contact}`. Your node session is pending admin verification.")
+        else:
+            st.error("⚠️ Please fill in both your Transaction ID and your contact info.")
 
 st.markdown('</div>', unsafe_allow_html=True)
 
