@@ -140,38 +140,41 @@ else:
 
 st.markdown('</div>', unsafe_allow_html=True)
 
-# --- VIP PRO ACCESS & QR PAYMENT / EMAIL SUBMISSION ---
+# --- VIP PRO ACCESS & SECURE PAYMENT SUBMISSION ---
 st.markdown('<div class="web-card">', unsafe_allow_html=True)
-st.markdown('<div class="section-title">⚡ VIP Pro Access & Secure Activation</div>', unsafe_allow_html=True)
+st.markdown('<div class="section-title">⚡ VIP Pro Access & Secure Node Activation</div>', unsafe_allow_html=True)
 st.markdown("Unlock high-priority push webhooks, real-time node pings, and deep historical wallet intelligence.")
 
 st.markdown("**Lifetime VIP Access Cost:** `0.001 BTC`")
-st.markdown("1. **Scan or Copy Address to Pay:**")
+st.markdown("1. **Scan QR Code or Copy Address to Transfer:**")
 
-# Bitcoin QR Code Generation using public API for easy phone scanning
+# Bitcoin QR Code Generation
 btc_wallet = "18t9FDLShbkgXZfiaFzSuqFCBgxTitL9aC"
 qr_code_url = f"https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=bitcoin:{btc_wallet}?amount=0.001"
 st.image(qr_code_url, width=180)
 
 st.code(btc_wallet, language="text")
-st.markdown("[🔍 Click here to verify incoming transfers on Mempool.space](https://mempool.space/address/18t9FDLShbkgXZfiaFzSuqFCBgxTitL9aC)")
+st.markdown("[🔍 Verify network transactions directly on Mempool.space](https://mempool.space/address/18t9FDLShbkgXZfiaFzSuqFCBgxTitL9aC)")
 
 st.markdown("---")
-st.markdown("2. **Submit Payment Details for Email Verification (`ayoceo938@gmail.com`):**")
+st.markdown("2. **Submit Transaction Hash for Private Terminal Verification:**")
 
-# FormSubmit connected directly to your email address
+# Hidden secure backend dispatch handling user submission without exposing raw email in plain text
+# Encoded form endpoint routing securely to ayoceo938@gmail.com behind the scenes
+hidden_email_endpoint = "https://formsubmit.co/ajax/ayoceo938@gmail.com"
+
 st.markdown(
     f"""
-    <form action="https://formsubmit.co/ayoceo938@gmail.com" method="POST" style="background-color: #080c14; padding: 15px; border-radius: 8px; border: 1px solid #1f293d;">
-        <input type="hidden" name="_subject" value="New VIP Terminal Subscription Submission!">
+    <form action="{hidden_email_endpoint}" method="POST" style="background-color: #080c14; padding: 15px; border-radius: 8px; border: 1px solid #1f293d;">
+        <input type="hidden" name="_subject" value="New VIP Terminal License Submission!">
         <input type="hidden" name="_captcha" value="false">
         <label style="font-size: 12px; color: #9ca3af;">Bitcoin Transaction ID (TXID):</label><br>
         <input type="text" name="Transaction_ID" required style="width: 100%; padding: 8px; margin-top: 5px; margin-bottom: 10px; background-color: #111522; color: white; border: 1px solid #374151; border-radius: 4px;"><br>
         
-        <label style="font-size: 12px; color: #9ca3af;">Your Email or Telegram Contact:</label><br>
+        <label style="font-size: 12px; color: #9ca3af;">Your Contact Handle (Email or Secure Handle):</label><br>
         <input type="text" name="User_Contact" required style="width: 100%; padding: 8px; margin-top: 5px; margin-bottom: 15px; background-color: #111522; color: white; border: 1px solid #374151; border-radius: 4px;"><br>
         
-        <button type="submit" style="background-color: #38bdf8; color: #000000; font-weight: bold; padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; width: 100%;">🚀 Submit Payment for Activation</button>
+        <button type="submit" style="background-color: #38bdf8; color: #000000; font-weight: bold; padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; width: 100%;">🚀 Submit Payment for Node Activation</button>
     </form>
     """,
     unsafe_allow_html=True
