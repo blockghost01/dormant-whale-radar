@@ -16,6 +16,112 @@ import streamlit as st
 # TELEGRAM ALERT CONNECTION
 def send_telegram_alert(message):
     try:
+
+        # DORMANT WHALE TELEGRAM ALERT SCANNER
+import os
+
+DORMANT_DAYS = 365 * 5
+MIN_WHALE_BTC = 100
+SCANNER_STATE_FILE = "whale_scanner_state.json"
+
+
+def check_dormant_whale_transaction(txid, address):
+    """
+    Check whether a transaction spends an output from an address
+    that has been dormant for at least five years.
+    """
+    try:
+        tx_url = f"https://mempool.space/api/tx/{txid}"
+
+        request = urllib.request.Request(
+            tx_url,
+            headers={"User-Agent": "DormantWhaleRadar/1.0"}
+        )
+
+        with urllib.request.urlopen(request, timeout=15) as response:
+            tx = json.loads(response.read().decode("utf-8"))
+
+        now = int(time.time())
+        threshold = now - DORMANT_DAYS * 24 * 60 * 60
+
+        for vin in tx.get("vin", []):
+            prevout = vin.get("prevout") or {}
+
+            if prevout.get("scriptpubkey_address") != address:
+                continue
+
+            value_btc = prevout.get("value", 0) / 100_000_000
+
+            if value_btc < MIN_WHALE_BTC:
+                continue
+
+            previous_txid = vin.get("txid")
+            if not previous_txid:
+                continue
+
+            previous_url = f"https://mempool.space/api/tx/{previous_txid}"
+            previous_request = urllib.request.Request(
+                previous_url,
+                headers={"User-Agent": "DormantWhaleRadar/1.0"}
+            )
+
+            with urllib.request.urlopen(previous_request, timeout=15) as response:
+                previous_tx = json.loads(response.read().decode("utf-8"))
+
+            block_time = previous_tx.get("status", {}).get("block_time")
+
+            if not block_time or block_time > threshold:
+                continue
+
+            dormant_days = (now - block_time) // 86400
+
+            return (
+                "DORMANT BITCOIN WHALE ALERT\n\n"
+                f"Address: {address}\n"
+                f"Spent output: {value_btc:.8f} BTC\n"
+                f"Dormant period: {dormant_days} days\n"
+                f"Previous transaction: {previous_txid}\n"
+                f"New transaction: {txid}\n"
+                f"Explorer: https://mempool.space/tx/{txid}"
+            )
+
+    except Exception as error:
+        print(f"Dormant whale check failed: {error}")
+
+    return None
+
+
+def scan_dormant_whale_transaction(txid, address):
+    """Send each detected transaction alert only once."""
+    try:
+        if os.path.exists(SCANNER_STATE_FILE):
+            with open(SCANNER_STATE_FILE, "r") as file:
+                state = json.load(file)
+        else:
+            state = {"alerted_txids": []}
+
+        if txid in state["alerted_txids"]:
+            return False
+
+        alert = check_dormant_whale_transaction(txid, address)
+
+        if not alert:
+            return False
+
+        if not send_telegram_alert(alert):
+            return False
+
+        state["alerted_txids"].append(txid)
+        state["alerted_txids"] = state["alerted_txids"][-5000:]
+
+        with open(SCANNER_STATE_FILE, "w") as file:
+            json.dump(state, file)
+
+        return True
+
+    except Exception as error:
+        print(f"Whale alert scanner failed: {error}")
+        return False
         token = st.secrets["TELEGRAM_BOT_TOKEN"]
         chat_id = st.secrets["TELEGRAM_CHAT_ID"]
 
