@@ -44,6 +44,16 @@ st.markdown("""
         color: #ffffff;
         margin-bottom: 10px;
     }
+    .bio-box {
+        font-size: 13px;
+        color: #9ca3af;
+        line-height: 1.6;
+        background-color: #0c101d;
+        padding: 12px;
+        border-radius: 8px;
+        border-left: 3px solid #38bdf8;
+        margin-bottom: 15px;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -51,9 +61,20 @@ st.markdown("""
 st.markdown("""
     <div style="text-align: center; padding: 10px 0 20px 0;">
         <h1 style="color: #ffffff; font-size: 28px; margin-bottom: 5px;">🐋 Bitcoin Dormant Whale Radar</h1>
-        <p style="color: #9ca3af; font-size: 14px;">Professional On-Chain Intelligence & Live Ledger Stream</p>
+        <p style="color: #9ca3af; font-size: 14px;">Institutional-Grade On-Chain Intelligence & Live Ledger Stream</p>
     </div>
 """, unsafe_allow_html=True)
+
+# --- PROFESSIONAL PLATFORM BIO ---
+st.markdown('<div class="web-card">', unsafe_allow_html=True)
+st.markdown('<div class="section-title">📌 Terminal Overview & Mission</div>', unsafe_allow_html=True)
+st.markdown(
+    """<div class="bio-box">
+    <b>Dormant Whale Radar</b> is a high-frequency intelligence engine designed to track ancient, untouched Bitcoin allocations waking up across the global ledger. By monitoring deep cold-storage UTXOs and mempool throughput in real time, our infrastructure gives macro analysts, traders, and fund managers early-warning telemetry on legacy asset movement before it hits public order books. Built for absolute precision and transparency.
+    </div>""", 
+    unsafe_allow_html=True
+)
+st.markdown('</div>', unsafe_allow_html=True)
 
 # --- CONTROLS BAR ---
 st.markdown('<div class="web-card">', unsafe_allow_html=True)
@@ -119,32 +140,42 @@ else:
 
 st.markdown('</div>', unsafe_allow_html=True)
 
-# --- VIP PRO ACCESS & PAYMENT TRACKING SECTION ---
+# --- VIP PRO ACCESS & QR PAYMENT / EMAIL SUBMISSION ---
 st.markdown('<div class="web-card">', unsafe_allow_html=True)
-st.markdown('<div class="section-title">⚡ VIP Pro Access & Payment Verification</div>', unsafe_allow_html=True)
-st.markdown("Unlock high-priority push webhooks, real-time alerts, and deep historical wallet intelligence.")
+st.markdown('<div class="section-title">⚡ VIP Pro Access & Secure Activation</div>', unsafe_allow_html=True)
+st.markdown("Unlock high-priority push webhooks, real-time node pings, and deep historical wallet intelligence.")
 
 st.markdown("**Lifetime VIP Access Cost:** `0.001 BTC`")
-st.markdown("1. Send Bitcoin to your secure developer wallet:")
-st.code("18t9FDLShbkgXZfiaFzSuqFCBgxTitL9aC", language="text")
+st.markdown("1. **Scan or Copy Address to Pay:**")
 
-# Quick link for you to check your wallet on Mempool.space
-st.markdown("[🔍 Click here to check your wallet incoming transactions on Mempool.space](https://mempool.space/address/18t9FDLShbkgXZfiaFzSuqFCBgxTitL9aC)")
+# Bitcoin QR Code Generation using public API for easy phone scanning
+btc_wallet = "18t9FDLShbkgXZfiaFzSuqFCBgxTitL9aC"
+qr_code_url = f"https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=bitcoin:{btc_wallet}?amount=0.001"
+st.image(qr_code_url, width=180)
+
+st.code(btc_wallet, language="text")
+st.markdown("[🔍 Click here to verify incoming transfers on Mempool.space](https://mempool.space/address/18t9FDLShbkgXZfiaFzSuqFCBgxTitL9aC)")
 
 st.markdown("---")
-st.markdown("**2. Submit your Payment Details for Activation:**")
+st.markdown("2. **Submit Payment Details for Email Verification (`ayoceo938@gmail.com`):**")
 
-# Payment Submission Form
-with st.form("vip_payment_form"):
-    user_txid = st.text_input("Bitcoin Transaction ID (TXID)")
-    user_contact = st.text_input("Your Telegram Handle or Email")
-    submit_payment = st.form_submit_button("🚀 Submit for VIP Activation")
-
-    if submit_payment:
-        if user_txid and user_contact:
-            st.success(f"✅ Payment reference received! TXID: `{user_txid[:10]}...` Contact: `{user_contact}`. Your node session is pending admin verification.")
-        else:
-            st.error("⚠️ Please fill in both your Transaction ID and your contact info.")
+# FormSubmit connected directly to your email address
+st.markdown(
+    f"""
+    <form action="https://formsubmit.co/ayoceo938@gmail.com" method="POST" style="background-color: #080c14; padding: 15px; border-radius: 8px; border: 1px solid #1f293d;">
+        <input type="hidden" name="_subject" value="New VIP Terminal Subscription Submission!">
+        <input type="hidden" name="_captcha" value="false">
+        <label style="font-size: 12px; color: #9ca3af;">Bitcoin Transaction ID (TXID):</label><br>
+        <input type="text" name="Transaction_ID" required style="width: 100%; padding: 8px; margin-top: 5px; margin-bottom: 10px; background-color: #111522; color: white; border: 1px solid #374151; border-radius: 4px;"><br>
+        
+        <label style="font-size: 12px; color: #9ca3af;">Your Email or Telegram Contact:</label><br>
+        <input type="text" name="User_Contact" required style="width: 100%; padding: 8px; margin-top: 5px; margin-bottom: 15px; background-color: #111522; color: white; border: 1px solid #374151; border-radius: 4px;"><br>
+        
+        <button type="submit" style="background-color: #38bdf8; color: #000000; font-weight: bold; padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; width: 100%;">🚀 Submit Payment for Activation</button>
+    </form>
+    """,
+    unsafe_allow_html=True
+)
 
 st.markdown('</div>', unsafe_allow_html=True)
 
