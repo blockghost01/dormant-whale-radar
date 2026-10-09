@@ -1,5 +1,6 @@
 import json
 import time
+import urllib.parse
 import urllib.request
 import urllib.error
 from datetime import datetime, timezone
@@ -10,295 +11,398 @@ st.set_page_config(
     page_title="Dormant Whale Radar",
     page_icon="🐋",
     layout="wide",
-    initial_sidebar_state="expanded",
 )
 
-API_BASE = "https://mempool.space/api"
+API = "https://mempool.space/api"
+WALLET = "18t9FDLShbkgXZfiaFzSuqFCBgxTitL9aC"
 
 
-st.markdown(
-    """
-    <style>
-    .stApp {
-        background-color: #07111f;
-        color: #e8f0ff;
-    }
-    [data-testid="stSidebar"] {
-        background-color: #0b1728;
-    }
-    .hero {
-        padding: 24px;
-        border: 1px solid #1d4260;
-        border-radius: 16px;
-        background: linear-gradient(135deg, #10243b, #07111f);
-        margin-bottom: 20px;
-    }
-    .hero h1 {
-        color: #64e6ff;
-        margin-bottom: 8px;
-    }
-    .hero p {
-        color: #b7c9df;
-    }
-    div[data-testid="stMetric"] {
-        background: #0c1b2d;
-        border: 1px solid #1b3853;
-        padding: 15px;
-        border-radius: 12px;
-    }
-    h2, h3 {
-        color: #64e6ff;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
-
-def get_json(endpoint):
-    """Fetch public Bitcoin network data safely."""
-    url = API_BASE + endpoint
-    request = urllib.request.Request(
-        url,
-        headers={"User-Agent": "DormantWhaleRadar/1.0"},
-    )
-
+def get_json(url, timeout=12):
     try:
-        with urllib.request.urlopen(request, timeout=12) as response:
+        request = urllib.request.Request(
+            url,
+            headers={"User-Agent": "DormantWhaleRadar/1.0"},
+        )
+        with urllib.request.urlopen(request, timeout=timeout) as response:
             return json.loads(response.read().decode("utf-8"))
-    except (
-        urllib.error.URLError,
-        urllib.error.HTTPError,
-        TimeoutError,
-        ValueError,
-    ):
+    except Exception:
         return None
 
 
-@st.cache_data(ttl=60)
-def get_network_data():
+@st.cache_data(ttl=30)
+def load_network():
     return {
-        "blocks": get_json("/blocks"),
-        "mempool": get_json("/mempool"),
-        "fees": get_json("/v1/fees/recommended"),
+        "blocks": get_json(f"{API}/blocks"),
+        "mempool": get_json(f"{API}/mempool"),
+        "fees": get_json(f"{API}/v1/fees/recommended"),
     }
 
 
-def number(value):
+@st.cache_data(ttl=60)
+def load_price():
+    url = (
+        "https://api.coingecko.com/api/v3/coins/bitcoin/"
+        "market_chart?vs_currency=usd&days=1"
+    )
+    return get_json(url)
+
+
+@st.cache_data(ttl=30)
+def load_address(address):
+    encoded = urllib.parse.quote(address, safe="")
+    return {
+        "info": get_json(f"{API}/address/{encoded}"),
+        "history": get_json(f"{API}/address/{encoded}/txs"),
+    }
+
+
+def fmt(value):
     try:
         return f"{int(value):,}"
     except (ValueError, TypeError):
         return "Unavailable"
 
 
-def btc(value):
+def btc_value(satoshis):
     try:
-        return f"{float(value):,.2f} BTC"
+        return f"{int(satoshis) / 100_000_000:.8f} BTC"
     except (ValueError, TypeError):
+        return "Unavailable"
+
+
+def utc_time(timestamp):
+    try:
+        return datetime.fromtimestamp(
+            int(timestamp), timezone.utc
+        ).strftime("%Y-%m-%d %H:%M UTC")
+    except (ValueError, TypeError, OSError):
         return "Unavailable"
 
 
 st.markdown(
     """
+    <style>
+    .stApp {
+        background: #07111f;
+        color: #e6f1ff;
+    }
+    [data-testid="stSidebar"] {
+        background: #0b1728;
+    }
+    .hero {
+        padding: 25px;
+        border-radius: 15px;
+        border: 1px solid #1e4564;
+        background: linear-gradient(130deg, #102b44, #07111f);
+        margin-bottom: 20px;
+    }
+    .hero h1 {
+        color: #61e6ff;
+    }
+    div[data-testid="stMetric"] {
+        background: #0c1b2d;
+        border: 1px solid #1b3853;
+        padding: 14px;
+        border-radius: 12px;
+    }
+    h2, h3 {
+        color: #61e6ff;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+st.markdown(
+    """
     <div class="hero">
-        <h1>🐋 Bitcoin Dormant Whale Radar</h1>
-        <p>
-            An on-chain dashboard for monitoring Bitcoin network activity,
-            block production, mempool conditions, and transaction fees.
-        </p>
+        <h1>🐋 Dormant Whale Radar</h1>
+        <p>Bitcoin on-chain monitoring and blockchain analytics terminal.</p>
+        <p>Live network data • Wallet inspection • Whale research</p>
     </div>
     """,
     unsafe_allow_html=True,
 )
 
-
 with st.sidebar:
-    st.header("Radar Settings")
+    st.header("Radar Controls")
 
-    dormancy_years = st.slider(
-        "Dormancy threshold (years)",
-        min_value=1,
-        max_value=20,
-        value=5,
+    dormancy_years = st.selectbox(
+        "Dormancy threshold",
+        [1, 2, 3, 5, 7, 10, 15, 20],
+        index=3,
+        format_func=lambda n: f"{n} years",
     )
 
     minimum_btc = st.number_input(
-        "Minimum whale balance (BTC)",
-        min_value=0.1,
-        max_value=1000000.0,
+        "Minimum BTC amount",
+        min_value=0.00000001,
         value=10.0,
         step=1.0,
-    )
-
-    auto_refresh = st.checkbox(
-        "Auto-refresh dashboard",
-        value=False,
+        format="%.8f",
     )
 
     refresh_seconds = st.selectbox(
         "Refresh interval",
-        options=[30, 60, 120, 300],
+        [30, 60, 120, 300],
         index=1,
-        format_func=lambda seconds: f"{seconds} seconds",
+        format_func=lambda n: f"{n} seconds",
     )
 
-    if st.button("Refresh data now", use_container_width=True):
+    auto_refresh = st.checkbox("Enable automatic refresh", value=False)
+
+    if st.button("Refresh now", use_container_width=True):
         st.cache_data.clear()
         st.rerun()
 
-    st.caption("Data source: mempool.space public API")
-    st.caption("All times are displayed in UTC.")
+    st.caption("Times shown in UTC.")
+    st.caption("Public blockchain data only.")
 
+network = load_network()
+blocks = network.get("blocks")
+mempool = network.get("mempool")
+fees = network.get("fees")
 
-with st.spinner("Loading live Bitcoin network data..."):
-    data = get_network_data()
+latest = blocks[0] if isinstance(blocks, list) and blocks else {}
 
-blocks = data.get("blocks")
-mempool = data.get("mempool")
-fees = data.get("fees")
+st.subheader("Live Bitcoin Network")
 
-latest_block = blocks[0] if isinstance(blocks, list) and blocks else None
+c1, c2, c3, c4 = st.columns(4)
 
-st.subheader("Network Overview")
+with c1:
+    st.metric("Block Height", fmt(latest.get("height")))
 
-if latest_block:
-    block_height = latest_block.get("height", "Unavailable")
-    block_time = latest_block.get("timestamp")
+with c2:
+    st.metric(
+        "Unconfirmed Transactions",
+        fmt(mempool.get("count") if isinstance(mempool, dict) else None),
+    )
 
-    if block_time:
-        last_block_time = datetime.fromtimestamp(
-            block_time, tz=timezone.utc
-        ).strftime("%Y-%m-%d %H:%M:%S UTC")
+with c3:
+    if isinstance(mempool, dict):
+        size = mempool.get("vsize")
+        size_label = (
+            f"{size / 1_000_000:.2f} MB"
+            if isinstance(size, (int, float))
+            else "Unavailable"
+        )
     else:
-        last_block_time = "Unavailable"
-else:
-    block_height = "Unavailable"
-    last_block_time = "Unavailable"
+        size_label = "Unavailable"
+    st.metric("Mempool Size", size_label)
 
+with c4:
+    st.metric(
+        "Latest Block Time",
+        utc_time(latest.get("timestamp")),
+    )
 
-if isinstance(mempool, dict):
-    mempool_count = mempool.get("count")
-    mempool_size = mempool.get("vsize")
-    mempool_fees = mempool.get("total_fee")
-else:
-    mempool_count = None
-    mempool_size = None
-    mempool_fees = None
+st.subheader("Bitcoin Price")
 
+price_data = load_price()
 
-col1, col2, col3 = st.columns(3)
+if isinstance(price_data, dict) and price_data.get("prices"):
+    prices = price_data["prices"]
+    chart_rows = [
+        {
+            "Time": datetime.fromtimestamp(
+                item[0] / 1000, timezone.utc
+            ),
+            "Price (USD)": item[1],
+        }
+        for item in prices
+        if isinstance(item, list) and len(item) >= 2
+    ]
 
-with col1:
-    st.metric("Latest Block Height", number(block_height))
+    if chart_rows:
+        st.line_chart(
+            chart_rows,
+            x="Time",
+            y="Price (USD)",
+        )
+        latest_price = chart_rows[-1]["Price (USD)"]
+        previous_price = chart_rows[-2]["Price (USD)"] if len(chart_rows) > 1 else latest_price
 
-with col2:
-    st.metric("Unconfirmed Transactions", number(mempool_count))
+        delta = latest_price - previous_price
 
-with col3:
-    if isinstance(mempool_size, (int, float)):
-        st.metric("Mempool Size", f"{mempool_size / 1_000_000:.2f} MB")
+        st.metric(
+            "Latest available BTC price",
+            f"${latest_price:,.2f}",
+            delta=f"${delta:,.2f} since previous chart point",
+        )
+        st.caption(
+            "Market data is supplied by CoinGecko and may be delayed. "
+            "The chart shows reported historical points, not guaranteed tick-by-tick prices."
+        )
     else:
-        st.metric("Mempool Size", "Unavailable")
-
-
-st.caption(f"Latest block time: {last_block_time}")
+        st.warning("Price data was returned in an unexpected format.")
+else:
+    st.warning(
+        "Bitcoin price data is temporarily unavailable. "
+        "The network dashboard can still operate."
+    )
 
 st.subheader("Transaction Fee Estimates")
 
 if isinstance(fees, dict):
-    fee1, fee2, fee3 = st.columns(3)
+    a, b, c = st.columns(3)
 
-    with fee1:
-        st.metric(
-            "High Priority",
-            f"{number(fees.get('fastestFee'))} sat/vB",
-        )
+    with a:
+        st.metric("High Priority", f"{fmt(fees.get('fastestFee'))} sat/vB")
 
-    with fee2:
-        st.metric(
-            "Medium Priority",
-            f"{number(fees.get('halfHourFee'))} sat/vB",
-        )
+    with b:
+        st.metric("Medium Priority", f"{fmt(fees.get('halfHourFee'))} sat/vB")
 
-    with fee3:
-        st.metric(
-            "Low Priority",
-            f"{number(fees.get('hourFee'))} sat/vB",
-        )
+    with c:
+        st.metric("Low Priority", f"{fmt(fees.get('hourFee'))} sat/vB")
 else:
-    st.warning(
-        "Fee estimates could not be loaded. "
-        "Please refresh the dashboard and try again."
-    )
-
+    st.warning("Transaction fee estimates are temporarily unavailable.")
 
 st.subheader("Recent Confirmed Blocks")
 
 if isinstance(blocks, list) and blocks:
     for block in blocks[:8]:
-        height = block.get("height", "Unknown")
-        tx_count = block.get("tx_count", "Unavailable")
         block_hash = block.get("id", "")
-        timestamp = block.get("timestamp")
-
-        if timestamp:
-            block_datetime = datetime.fromtimestamp(
-                timestamp, tz=timezone.utc
-            ).strftime("%Y-%m-%d %H:%M UTC")
-        else:
-            block_datetime = "Time unavailable"
+        height = block.get("height")
+        tx_count = block.get("tx_count")
 
         st.markdown(
-            f"**Block {number(height)}** · "
-            f"Transactions: {number(tx_count)} · "
-            f"{block_datetime}"
+            f"**Block {fmt(height)}** · "
+            f"Transactions: {fmt(tx_count)} · "
+            f"{utc_time(block.get('timestamp'))}"
         )
 
         if block_hash:
             st.markdown(
-                f"[View block on mempool.space]"
+                f"[Inspect block on mempool.space]"
                 f"(https://mempool.space/block/{block_hash})"
             )
 
         st.divider()
 else:
-    st.warning(
-        "Block data is temporarily unavailable. "
-        "Check your internet connection and refresh."
-    )
+    st.warning("Block information is currently unavailable.")
 
+st.subheader("Bitcoin Wallet Scanner")
 
-st.subheader("Dormant Whale Search")
+wallet = st.text_input(
+    "Bitcoin address to inspect",
+    value=WALLET,
+    help="Enter a public Bitcoin address. Never enter a private key or recovery phrase.",
+)
+
+if st.button("Scan wallet", type="primary"):
+    wallet = wallet.strip()
+
+    if not wallet or len(wallet) > 100:
+        st.error("Enter a valid-looking public Bitcoin address.")
+    else:
+        with st.spinner("Looking up address on the Bitcoin network..."):
+            result = load_address(wallet)
+
+        info = result.get("info")
+        history = result.get("history")
+
+        if isinstance(info, dict):
+            chain = info.get("chain_stats", {})
+            mempool_stats = info.get("mempool_stats", {})
+
+            confirmed_received = chain.get("funded_txo_sum", 0)
+            confirmed_sent = chain.get("spent_txo_sum", 0)
+            pending_received = mempool_stats.get("funded_txo_sum", 0)
+            pending_sent = mempool_stats.get("spent_txo_sum", 0)
+
+            confirmed_balance = confirmed_received - confirmed_sent
+            pending_balance = pending_received - pending_sent
+
+            w1, w2, w3 = st.columns(3)
+
+            with w1:
+                st.metric("Confirmed Balance", btc_value(confirmed_balance))
+
+            with w2:
+                st.metric("Pending Balance Change", btc_value(pending_balance))
+
+            with w3:
+                st.metric(
+                    "Confirmed Transactions",
+                    fmt(chain.get("tx_count")),
+                )
+
+            st.markdown(
+                f"[Open this address in the blockchain explorer]"
+                f"(https://mempool.space/address/{urllib.parse.quote(wallet, safe='')})"
+            )
+
+            st.caption(
+                "A balance lookup does not establish who owns an address "
+                "or prove that its owner is dormant."
+            )
+
+            st.markdown("#### Recent Address Transactions")
+
+            if isinstance(history, list) and history:
+                for tx in history[:10]:
+                    txid = tx.get("txid", "")
+                    status = tx.get("status", {})
+                    confirmed = status.get("confirmed", False)
+
+                    if confirmed:
+                        block_time = utc_time(status.get("block_time"))
+                        state = f"Confirmed · {block_time}"
+                    else:
+                        state = "Unconfirmed"
+
+                    st.markdown(
+                        f"**{state}**  \n"
+                        f"Transaction: `{txid}`"
+                    )
+
+                    if txid:
+                        st.markdown(
+                            f"[View transaction]"
+                            f"(https://mempool.space/tx/{txid})"
+                        )
+
+                    st.divider()
+            elif history == []:
+                st.info("No recent transactions were returned for this address.")
+            else:
+                st.warning("Transaction history could not be loaded.")
+        else:
+            st.error(
+                "The address lookup failed. Check the address and try again. "
+                "The data provider may also be temporarily unavailable."
+            )
+
+st.subheader("Dormant Whale Research")
 
 st.info(
     f"""
-    Your selected search settings are:
+    Selected minimum balance: **{minimum_btc:,.8f} BTC**  
+    Selected dormancy threshold: **{dormancy_years} years**
 
-    - Dormancy threshold: **{dormancy_years} years**
-    - Minimum Bitcoin balance: **{minimum_btc:,.2f} BTC**
+    The wallet scanner above performs address lookups. It does not yet
+    conduct a global historical search for all Bitcoin outputs that have
+    remained unspent for the selected number of years.
 
-    **Important:** These settings are ready, but this version does not
-    yet scan historical Bitcoin outputs to identify wallets that have
-    remained inactive for the selected period. It does not currently
-    identify or verify dormant whales.
+    A genuine global scanner requires a suitable historical blockchain
+    index or additional Bitcoin infrastructure. No dormant-whale results
+    are fabricated by this dashboard.
     """
 )
-
 
 st.subheader("VIP Access")
 
 st.warning(
-    "VIP payments and account activation are not implemented in this "
-    "version. Do not send Bitcoin expecting automatic access or a "
-    "service that has not been verified."
+    "Payment verification and automatic VIP activation are not enabled "
+    "in this version. Do not send Bitcoin expecting automatic access "
+    "until a complete payment-verification system has been tested."
 )
-
 
 st.caption(
-    "Dormant Whale Radar · Live public network data where available. "
-    "Network data may occasionally be unavailable."
+    f"Last page render: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}"
 )
 
+st.caption("Dormant Whale Radar | Bitcoin On-Chain Analytics")
 
 if auto_refresh:
     time.sleep(refresh_seconds)
