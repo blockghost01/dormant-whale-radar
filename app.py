@@ -1,625 +1,305 @@
-import streamlit as st
-import requests
+import json
 import time
-import html
+import urllib.request
+import urllib.error
 from datetime import datetime, timezone
 
-============================================================
-
-PAGE CONFIGURATION
-
-============================================================
+import streamlit as st
 
 st.set_page_config(
-page_title="Dormant Whale Radar | Bitcoin Intelligence",
-page_icon="🐋",
-layout="wide",
-initial_sidebar_state="collapsed",
+    page_title="Dormant Whale Radar",
+    page_icon="🐋",
+    layout="wide",
+    initial_sidebar_state="expanded",
 )
-
-============================================================
-
-CONFIGURATION
-
-============================================================
 
 API_BASE = "https://mempool.space/api"
-EXPLORER_BASE = "https://mempool.space"
 
-Public receiving address displayed for the proposed VIP feature.
-
-Verify ownership and payment-processing arrangements before use.
-
-BTC_WALLET = "18t9FDLShbkgXZfiaFzSuqFCBgxTitL9aC"
-
-============================================================
-
-CUSTOM DESIGN
-
-============================================================
 
 st.markdown(
-"""
-<style>
-.stApp {
-background: #07090e;
-color: #f3f4f6;
-}
-
-#MainMenu, footer, header {
-    visibility: hidden;
-}
-
-.block-container {
-    max-width: 1250px;
-    padding-top: 1.5rem;
-    padding-bottom: 3rem;
-}
-
-.hero {
-    text-align: center;
-    padding: 25px 10px 30px 10px;
-    background: linear-gradient(145deg, #101827, #07090e);
-    border: 1px solid #1f293d;
-    border-radius: 18px;
-    margin-bottom: 24px;
-}
-
-.hero h1 {
-    color: #ffffff;
-    font-size: clamp(25px, 4vw, 38px);
-    margin-bottom: 8px;
-}
-
-.hero p {
-    color: #9ca3af;
-    font-size: 14px;
-}
-
-.web-card {
-    background: #111522;
-    border: 1px solid #1f293d;
-    border-radius: 14px;
-    padding: 20px;
-    margin-bottom: 20px;
-}
-
-.section-title {
-    font-size: 19px;
-    font-weight: 700;
-    color: #ffffff;
-    margin-bottom: 12px;
-}
-
-.terminal-box {
-    background: #030712;
-    border: 1px solid #1e293b;
-    border-radius: 9px;
-    padding: 16px;
-    color: #38bdf8;
-    font-family: monospace;
-    font-size: 13px;
-    line-height: 1.9;
-    overflow-wrap: anywhere;
-}
-
-.muted {
-    color: #9ca3af;
-    font-size: 13px;
-    line-height: 1.7;
-}
-
-.blue {
-    color: #38bdf8;
-}
-
-.status {
-    color: #22c55e;
-    font-weight: 700;
-}
-
-.warning-box {
-    padding: 14px;
-    border: 1px solid #854d0e;
-    background: #21180a;
-    border-radius: 9px;
-    color: #fde68a;
-    line-height: 1.7;
-    font-size: 13px;
-}
-
-.footer-note {
-    text-align: center;
-    color: #6b7280;
-    font-size: 12px;
-    padding: 20px;
-}
-
-div.stButton > button {
-    border-radius: 8px;
-    min-height: 42px;
-    font-weight: 600;
-}
-</style>
-""",
-unsafe_allow_html=True,
-
+    """
+    <style>
+    .stApp {
+        background-color: #07111f;
+        color: #e8f0ff;
+    }
+    [data-testid="stSidebar"] {
+        background-color: #0b1728;
+    }
+    .hero {
+        padding: 24px;
+        border: 1px solid #1d4260;
+        border-radius: 16px;
+        background: linear-gradient(135deg, #10243b, #07111f);
+        margin-bottom: 20px;
+    }
+    .hero h1 {
+        color: #64e6ff;
+        margin-bottom: 8px;
+    }
+    .hero p {
+        color: #b7c9df;
+    }
+    div[data-testid="stMetric"] {
+        background: #0c1b2d;
+        border: 1px solid #1b3853;
+        padding: 15px;
+        border-radius: 12px;
+    }
+    h2, h3 {
+        color: #64e6ff;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
 )
 
-============================================================
 
-LIVE BITCOIN API
+def get_json(endpoint):
+    """Fetch public Bitcoin network data safely."""
+    url = API_BASE + endpoint
+    request = urllib.request.Request(
+        url,
+        headers={"User-Agent": "DormantWhaleRadar/1.0"},
+    )
 
-============================================================
-
-@st.cache_data(ttl=30, show_spinner=False)
-def fetch_latest_block():
-try:
-response = requests.get(
-f"{API_BASE}/blocks",
-timeout=12,
-)
-response.raise_for_status()
-
-    blocks = response.json()
-
-    if not isinstance(blocks, list) or not blocks:
+    try:
+        with urllib.request.urlopen(request, timeout=12) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except (
+        urllib.error.URLError,
+        urllib.error.HTTPError,
+        TimeoutError,
+        ValueError,
+    ):
         return None
 
-    block = blocks[0]
 
+@st.cache_data(ttl=60)
+def get_network_data():
     return {
-        "height": block.get("height"),
-        "hash": block.get("id"),
-        "timestamp": block.get("timestamp"),
-        "tx_count": block.get("tx_count"),
+        "blocks": get_json("/blocks"),
+        "mempool": get_json("/mempool"),
+        "fees": get_json("/v1/fees/recommended"),
     }
 
-except (requests.RequestException, ValueError, TypeError):
-    return None
 
-@st.cache_data(ttl=30, show_spinner=False)
-def fetch_mempool():
-try:
-response = requests.get(
-f"{API_BASE}/mempool",
-timeout=12,
-)
-response.raise_for_status()
+def number(value):
+    try:
+        return f"{int(value):,}"
+    except (ValueError, TypeError):
+        return "Unavailable"
 
-    data = response.json()
 
-    return {
-        "count": data.get("count"),
-        "vsize": data.get("vsize"),
-        "total_fee": data.get("total_fee"),
-    }
+def btc(value):
+    try:
+        return f"{float(value):,.2f} BTC"
+    except (ValueError, TypeError):
+        return "Unavailable"
 
-except (requests.RequestException, ValueError, TypeError):
-    return None
-
-@st.cache_data(ttl=30, show_spinner=False)
-def fetch_fee_estimates():
-try:
-response = requests.get(
-f"{API_BASE}/v1/fees/recommended",
-timeout=12,
-)
-response.raise_for_status()
-
-    data = response.json()
-
-    return data
-
-except (requests.RequestException, ValueError, TypeError):
-    return None
-
-@st.cache_data(ttl=60, show_spinner=False)
-def fetch_recent_blocks():
-try:
-response = requests.get(
-f"{API_BASE}/v1/blocks",
-timeout=12,
-)
-response.raise_for_status()
-
-    data = response.json()
-
-    return data if isinstance(data, list) else []
-
-except (requests.RequestException, ValueError, TypeError):
-    return []
-
-============================================================
-
-HELPERS
-
-============================================================
-
-def format_number(value):
-if isinstance(value, (int, float)):
-return f"{value:,}"
-return "N/A"
-
-def format_btc_sats(value):
-if isinstance(value, (int, float)):
-return f"{value:,} sats"
-return "N/A"
-
-def format_utc(timestamp):
-if not isinstance(timestamp, (int, float)):
-return "N/A"
-
-try:
-    dt = datetime.fromtimestamp(
-        timestamp,
-        tz=timezone.utc,
-    )
-    return dt.strftime("%Y-%m-%d %H:%M:%S UTC")
-except (ValueError, OSError, OverflowError):
-    return "N/A"
-
-============================================================
-
-HERO HEADER
-
-============================================================
 
 st.markdown(
-"""
-<div class="hero">
-<h1>🐋 Bitcoin Dormant Whale Radar</h1>
-<p>ON-CHAIN INTELLIGENCE • NETWORK TELEMETRY • BLOCKCHAIN RESEARCH</p>
-<p>Monitor Bitcoin network activity through public blockchain data.</p>
-</div>
-""",
-unsafe_allow_html=True,
-)
-
-============================================================
-
-SIDEBAR SETTINGS
-
-============================================================
-
-with st.sidebar:
-st.title("⚙️ Radar Settings")
-
-min_dormancy_years = st.slider(
-    "Minimum output age (years)",
-    min_value=1,
-    max_value=20,
-    value=5,
-)
-
-min_whale_btc = st.number_input(
-    "Minimum output value (BTC)",
-    min_value=0.0,
-    max_value=1000000.0,
-    value=10.0,
-    step=1.0,
-)
-
-auto_refresh = st.checkbox(
-    "Automatic refresh",
-    value=False,
-)
-
-refresh_seconds = st.selectbox(
-    "Refresh interval",
-    [30, 60, 120, 300],
-    index=1,
-    format_func=lambda x: f"{x} seconds",
-    disabled=not auto_refresh,
-)
-
-st.markdown("---")
-st.caption(
-    "The age and value settings are research filters. "
-    "Historical UTXO scanning is not yet connected."
-)
-
-============================================================
-
-FETCH LIVE DATA
-
-============================================================
-
-with st.spinner("Connecting to the public Bitcoin data API..."):
-block = fetch_latest_block()
-mempool = fetch_mempool()
-fees = fetch_fee_estimates()
-recent_blocks = fetch_recent_blocks()
-
-checked_at = datetime.now(timezone.utc).strftime(
-"%Y-%m-%d %H:%M:%S UTC"
-)
-
-============================================================
-
-NETWORK TELEMETRY
-
-============================================================
-
-st.markdown(
-'<div class="section-title">📊 Live Network Telemetry</div>',
-unsafe_allow_html=True,
-)
-
-if block:
-height = block.get("height")
-tx_count = block.get("tx_count")
-
-c1, c2, c3 = st.columns(3)
-
-c1.metric(
-    "Latest Block Height",
-    format_number(height),
-)
-
-c2.metric(
-    "Latest Block Transactions",
-    format_number(tx_count),
-)
-
-mempool_count = mempool.get("count") if mempool else None
-
-c3.metric(
-    "Unconfirmed Transactions",
-    format_number(mempool_count),
-)
-
-st.success(f"Bitcoin data endpoint responding • Checked {checked_at}")
-
-else:
-st.error(
-"The Bitcoin data endpoint could not be reached. "
-"Check your internet connection or try refreshing."
-)
-
-st.info(
-    "The rest of the application remains available, "
-    "but live metrics cannot be displayed until the API responds."
-)
-
-st.markdown("---")
-
-============================================================
-
-NETWORK FEES AND CONGESTION
-
-============================================================
-
-st.markdown(
-'<div class="section-title">⚡ Network Fees & Congestion</div>',
-unsafe_allow_html=True,
-)
-
-fee_col1, fee_col2, fee_col3 = st.columns(3)
-
-if fees:
-fee_col1.metric(
-"High Priority Fee",
-f"{fees.get('fastestFee', 'N/A')} sat/vB",
-)
-
-fee_col2.metric(
-    "Medium Priority Fee",
-    f"{fees.get('halfHourFee', 'N/A')} sat/vB",
-)
-
-fee_col3.metric(
-    "Low Priority Fee",
-    f"{fees.get('hourFee', 'N/A')} sat/vB",
-)
-
-else:
-fee_col1.metric("High Priority Fee", "N/A")
-fee_col2.metric("Medium Priority Fee", "N/A")
-fee_col3.metric("Low Priority Fee", "N/A")
-
-if mempool:
-count = mempool.get("count")
-vsize = mempool.get("vsize")
-
-st.markdown(
-    f"""
-    <div class="terminal-box">
-    [MEMPOOL NETWORK MONITOR]<br>
-    API STATUS: {"RESPONDING" if block else "PARTIAL / UNAVAILABLE"}<br>
-    UNCONFIRMED TRANSACTIONS: {format_number(count)}<br>
-    MEMPOOL VIRTUAL SIZE: {format_number(vsize)} vB<br>
-    LAST CHECK: {html.escape(checked_at)}
+    """
+    <div class="hero">
+        <h1>🐋 Bitcoin Dormant Whale Radar</h1>
+        <p>
+            An on-chain dashboard for monitoring Bitcoin network activity,
+            block production, mempool conditions, and transaction fees.
+        </p>
     </div>
     """,
     unsafe_allow_html=True,
 )
 
-if isinstance(count, int):
-    congestion = min(count / 100000, 1.0)
 
-    st.caption(
-        "Relative transaction-count indicator "
-        "(not a direct measurement of network capacity)."
+with st.sidebar:
+    st.header("Radar Settings")
+
+    dormancy_years = st.slider(
+        "Dormancy threshold (years)",
+        min_value=1,
+        max_value=20,
+        value=5,
     )
 
-    st.progress(congestion)
+    minimum_btc = st.number_input(
+        "Minimum whale balance (BTC)",
+        min_value=0.1,
+        max_value=1000000.0,
+        value=10.0,
+        step=1.0,
+    )
 
+    auto_refresh = st.checkbox(
+        "Auto-refresh dashboard",
+        value=False,
+    )
+
+    refresh_seconds = st.selectbox(
+        "Refresh interval",
+        options=[30, 60, 120, 300],
+        index=1,
+        format_func=lambda seconds: f"{seconds} seconds",
+    )
+
+    if st.button("Refresh data now", use_container_width=True):
+        st.cache_data.clear()
+        st.rerun()
+
+    st.caption("Data source: mempool.space public API")
+    st.caption("All times are displayed in UTC.")
+
+
+with st.spinner("Loading live Bitcoin network data..."):
+    data = get_network_data()
+
+blocks = data.get("blocks")
+mempool = data.get("mempool")
+fees = data.get("fees")
+
+latest_block = blocks[0] if isinstance(blocks, list) and blocks else None
+
+st.subheader("Network Overview")
+
+if latest_block:
+    block_height = latest_block.get("height", "Unavailable")
+    block_time = latest_block.get("timestamp")
+
+    if block_time:
+        last_block_time = datetime.fromtimestamp(
+            block_time, tz=timezone.utc
+        ).strftime("%Y-%m-%d %H:%M:%S UTC")
+    else:
+        last_block_time = "Unavailable"
 else:
-st.warning("Current mempool statistics are unavailable.")
+    block_height = "Unavailable"
+    last_block_time = "Unavailable"
 
-============================================================
 
-DORMANT WHALE RESEARCH
+if isinstance(mempool, dict):
+    mempool_count = mempool.get("count")
+    mempool_size = mempool.get("vsize")
+    mempool_fees = mempool.get("total_fee")
+else:
+    mempool_count = None
+    mempool_size = None
+    mempool_fees = None
 
-============================================================
 
-st.markdown("---")
+col1, col2, col3 = st.columns(3)
 
-st.markdown(
-'<div class="section-title">🐋 Dormant Whale Research Terminal</div>',
-unsafe_allow_html=True,
-)
+with col1:
+    st.metric("Latest Block Height", number(block_height))
 
-st.markdown(
-f"""
-<div class="web-card">
-<div class="muted">CURRENT RESEARCH PARAMETERS</div>
-<h3 style="color:#38bdf8">
-{min_dormancy_years}-Year Dormancy Threshold
-</h3>
-<p class="muted">
-Minimum output value: {min_whale_btc:,.2f} BTC
-</p>
-<p class="muted">
-Research mode: Historical Bitcoin output analysis
-</p>
-</div>
-""",
-unsafe_allow_html=True,
-)
+with col2:
+    st.metric("Unconfirmed Transactions", number(mempool_count))
 
-st.markdown(
-"""
-<div class="warning-box">
-SCANNER STATUS: HISTORICAL OUTPUT SCANNING NOT YET IMPLEMENTED.<br><br>
-This dashboard currently retrieves live network statistics.
-It does not yet scan all historical Bitcoin outputs or verify
-which older outputs remain unspent. No dormant-whale detections
-are claimed until that data pipeline is implemented.
-</div>
-""",
-unsafe_allow_html=True,
-)
+with col3:
+    if isinstance(mempool_size, (int, float)):
+        st.metric("Mempool Size", f"{mempool_size / 1_000_000:.2f} MB")
+    else:
+        st.metric("Mempool Size", "Unavailable")
 
-st.markdown("")
 
-with st.expander("What the completed whale scanner will do"):
-st.markdown(
-"""
-1. Retrieve historical Bitcoin transaction outputs.
-2. Verify their current unspent status.
-3. Calculate the time elapsed since each output was created.
-4. Apply the selected dormancy and BTC-value thresholds.
-5. Display qualifying outputs and link to public blockchain records.
+st.caption(f"Latest block time: {last_block_time}")
 
-    An old output is not automatically a whale wallet. Bitcoin
-    addresses, outputs, wallets, and beneficial owners are different
-    concepts, and ownership cannot be reliably inferred from age alone.
-    """
-)
+st.subheader("Transaction Fee Estimates")
 
-============================================================
+if isinstance(fees, dict):
+    fee1, fee2, fee3 = st.columns(3)
 
-RECENT CONFIRMED BLOCKS
-
-============================================================
-
-st.markdown("---")
-
-st.markdown(
-'<div class="section-title">🧱 Recent Confirmed Blocks</div>',
-unsafe_allow_html=True,
-)
-
-if recent_blocks:
-for item in recent_blocks[:5]:
-block_hash = item.get("id")
-block_height = item.get("height")
-block_timestamp = item.get("timestamp")
-
-    with st.container(border=True):
-        st.markdown(
-            f"**Block {format_number(block_height)}**"
+    with fee1:
+        st.metric(
+            "High Priority",
+            f"{number(fees.get('fastestFee'))} sat/vB",
         )
 
-        st.caption(
-            f"Timestamp: {format_utc(block_timestamp)}"
+    with fee2:
+        st.metric(
+            "Medium Priority",
+            f"{number(fees.get('halfHourFee'))} sat/vB",
+        )
+
+    with fee3:
+        st.metric(
+            "Low Priority",
+            f"{number(fees.get('hourFee'))} sat/vB",
+        )
+else:
+    st.warning(
+        "Fee estimates could not be loaded. "
+        "Please refresh the dashboard and try again."
+    )
+
+
+st.subheader("Recent Confirmed Blocks")
+
+if isinstance(blocks, list) and blocks:
+    for block in blocks[:8]:
+        height = block.get("height", "Unknown")
+        tx_count = block.get("tx_count", "Unavailable")
+        block_hash = block.get("id", "")
+        timestamp = block.get("timestamp")
+
+        if timestamp:
+            block_datetime = datetime.fromtimestamp(
+                timestamp, tz=timezone.utc
+            ).strftime("%Y-%m-%d %H:%M UTC")
+        else:
+            block_datetime = "Time unavailable"
+
+        st.markdown(
+            f"**Block {number(height)}** · "
+            f"Transactions: {number(tx_count)} · "
+            f"{block_datetime}"
         )
 
         if block_hash:
-            safe_hash = html.escape(str(block_hash))
-
-            st.code(
-                safe_hash,
-                language="text",
-            )
-
             st.markdown(
-                f"[View block on Mempool.space]"
-                f"({EXPLORER_BASE}/block/{safe_hash})"
+                f"[View block on mempool.space]"
+                f"(https://mempool.space/block/{block_hash})"
             )
 
+        st.divider()
 else:
-st.info("Recent block information is temporarily unavailable.")
+    st.warning(
+        "Block data is temporarily unavailable. "
+        "Check your internet connection and refresh."
+    )
 
-============================================================
 
-VIP ACCESS INFORMATION
+st.subheader("Dormant Whale Search")
 
-============================================================
+st.info(
+    f"""
+    Your selected search settings are:
 
-st.markdown("---")
+    - Dormancy threshold: **{dormancy_years} years**
+    - Minimum Bitcoin balance: **{minimum_btc:,.2f} BTC**
 
-st.markdown(
-'<div class="section-title">⭐ VIP Pro Access</div>',
-unsafe_allow_html=True,
+    **Important:** These settings are ready, but this version does not
+    yet scan historical Bitcoin outputs to identify wallets that have
+    remained inactive for the selected period. It does not currently
+    identify or verify dormant whales.
+    """
 )
 
-st.markdown(
-"""
-<div class="web-card">
-<h3 style="color:#ffffff">Premium Research Access</h3>
-<p class="muted">
-This section is reserved for future premium features,
-including historical output research, saved watchlists,
-and configurable blockchain alerts.
-</p>
-<p class="muted">
-Payment processing and account activation are not yet
-implemented. Sending Bitcoin does not automatically grant
-access through this dashboard.
-</p>
-</div>
-""",
-unsafe_allow_html=True,
-)
 
-with st.expander("VIP payment setup information"):
+st.subheader("VIP Access")
+
 st.warning(
-"Payment verification is not active. Do not send Bitcoin "
-"based solely on this demonstration interface."
+    "VIP payments and account activation are not implemented in this "
+    "version. Do not send Bitcoin expecting automatic access or a "
+    "service that has not been verified."
 )
+
 
 st.caption(
-    "A production payment system must verify the transaction, "
-    "receiving address, required amount, confirmation status, "
-    "and whether the payment has already been redeemed."
+    "Dormant Whale Radar · Live public network data where available. "
+    "Network data may occasionally be unavailable."
 )
 
-============================================================
-
-FOOTER
-
-============================================================
-
-st.markdown(
-"""
-<div class="footer-note">
-DORMANT WHALE RADAR • BITCOIN ON-CHAIN RESEARCH<br>
-Public network information provided by mempool.space.<br>
-Blockchain research only. Not financial advice.
-</div>
-""",
-unsafe_allow_html=True,
-)
-
-============================================================
-
-AUTOMATIC REFRESH
-
-============================================================
 
 if auto_refresh:
-time.sleep(refresh_seconds)
-st.rerun()
+    time.sleep(refresh_seconds)
+    st.rerun()
