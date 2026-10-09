@@ -11,7 +11,7 @@ st.set_page_config(
     layout="centered"
 )
 
-# --- CUSTOM CSS FOR PROFESSIONAL WEB DESIGN ---
+# --- CUSTOM CSS FOR PROFESSIONAL WEB DESIGN & GLOW ---
 st.markdown("""
     <style>
     .stApp {
@@ -54,6 +54,15 @@ st.markdown("""
         border-left: 3px solid #38bdf8;
         margin-bottom: 15px;
     }
+    .pulse-badge {
+        display: inline-block;
+        width: 10px;
+        height: 10px;
+        background-color: #22c55e;
+        border-radius: 50%;
+        box-shadow: 0 0 8px #22c55e;
+        margin-right: 6px;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -65,12 +74,12 @@ st.markdown("""
     </div>
 """, unsafe_allow_html=True)
 
-# --- PROFESSIONAL PLATFORM BIO ---
+# --- PROFESSIONAL PLATFORM BIO & SINCERITY ---
 st.markdown('<div class="web-card">', unsafe_allow_html=True)
-st.markdown('<div class="section-title">📌 Terminal Overview & Mission</div>', unsafe_allow_html=True)
+st.markdown('<div class="section-title">📌 Terminal Overview & Genuine Mission</div>', unsafe_allow_html=True)
 st.markdown(
     """<div class="bio-box">
-    <b>Dormant Whale Radar</b> is a high-frequency intelligence engine designed to track ancient, untouched Bitcoin allocations waking up across the global ledger. By monitoring deep cold-storage UTXOs and mempool throughput in real time, our infrastructure gives macro analysts, traders, and fund managers early-warning telemetry on legacy asset movement before it hits public order books. Built for absolute precision and transparency.
+    <b>Dormant Whale Radar</b> is built with absolute sincerity for macro analysts, traders, and Bitcoin researchers. We track ancient, untouched Bitcoin allocations waking up across the global ledger with zero fluff or hidden gimmicks. Our goal is to provide pure, transparent on-chain telemetry straight from the mempool to help you stay ahead of legacy asset movements.
     </div>""", 
     unsafe_allow_html=True
 )
@@ -120,18 +129,18 @@ if live_block:
     m3.metric("Fee Rate", f"{live_block['fee']} sat/vB")
     
     st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown(f"🟢 **Node Status:** Fully Connected & Active | **Sync:** `{current_time}`")
-    st.markdown(f"🔍 **Active Filter:** Scanning for cold storage movements $\ge$ **{min_dormancy_years} Years**.")
+    st.markdown('<span class="pulse-badge"></span> **Node Status:** Fully Connected & Streaming Live | **Sync:** `' + current_time + '`', unsafe_allow_html=True)
+    st.markdown(f"🔍 **Active Filter:** Scanning cold storage UTXOs $\ge$ **{min_dormancy_years} Years** dormancy.")
     
     # Live Terminal Log Box
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown(
         f"""<div class="terminal-box">
-[LIVE DISPATCHER CONSOLE - REAL-TIME STREAM]<br>
+[LIVE DISPATCHER CONSOLE - SECURE NODE STREAM]<br>
 > Target Block Hash: {live_block['hash']}<br>
-> Dormancy Rule Set: &gt;= {min_dormancy_years} Years Unmoved<br>
-> Socket State: Active handshake with mempool.space REST gateway.<br>
-> Status: Live calculations operating at peak frequency. Ready for alerts.
+> Dormancy Threshold: &gt;= {min_dormancy_years} Years Unmoved<br>
+> Socket State: Active handshake with mempool.space gateway.<br>
+> Status: Real-time cryptographic ledger analysis operating smoothly.
         </div>""", 
         unsafe_allow_html=True
     )
@@ -143,7 +152,7 @@ st.markdown('</div>', unsafe_allow_html=True)
 # --- VIP PRO ACCESS & SECURE PAYMENT SUBMISSION ---
 st.markdown('<div class="web-card">', unsafe_allow_html=True)
 st.markdown('<div class="section-title">⚡ VIP Pro Access & Secure Node Activation</div>', unsafe_allow_html=True)
-st.markdown("Unlock high-priority push webhooks, real-time node pings, and deep historical wallet intelligence.")
+st.markdown("Unlock high-priority push webhooks, real-time node alerts, and deep historical wallet telemetry.")
 
 st.markdown("**Lifetime VIP Access Cost:** `0.001 BTC`")
 st.markdown("1. **Scan QR Code or Copy Address to Transfer:**")
@@ -160,7 +169,6 @@ st.markdown("---")
 st.markdown("2. **Submit Transaction Hash for Private Terminal Verification:**")
 
 # Hidden secure backend dispatch handling user submission without exposing raw email in plain text
-# Encoded form endpoint routing securely to ayoceo938@gmail.com behind the scenes
 hidden_email_endpoint = "https://formsubmit.co/ajax/ayoceo938@gmail.com"
 
 st.markdown(
