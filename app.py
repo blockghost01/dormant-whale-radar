@@ -5,6 +5,33 @@ import urllib.parse
 from datetime import datetime, timezone
 
 import streamlit as st
+import json
+import time
+import urllib.request
+import urllib.parse
+from datetime import datetime, timezone
+
+import streamlit as st
+
+# TELEGRAM ALERT CONNECTION
+def send_telegram_alert(message):
+    try:
+        token = st.secrets["TELEGRAM_BOT_TOKEN"]
+        chat_id = st.secrets["TELEGRAM_CHAT_ID"]
+
+        url = f"https://api.telegram.org/bot{token}/sendMessage"
+        data = urllib.parse.urlencode({
+            "chat_id": chat_id,
+            "text": message
+        }).encode("utf-8")
+
+        request = urllib.request.Request(url, data=data)
+        with urllib.request.urlopen(request, timeout=10) as response:
+            return response.status == 200
+
+    except Exception as error:
+        print(f"Telegram alert failed: {error}")
+        return False
 
 st.set_page_config(
     page_title="Dormant Whale Radar",
