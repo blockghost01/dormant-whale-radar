@@ -26,20 +26,17 @@ st.set_page_config(
 
 API = "https://mempool.space/api"
 
-# Preserve the original Bitcoin receiving address.
 WALLET = "18t9FDLShbkgXZfiaFzSuqFCBgxTitL9aC"
 
-# Display setting only; this does not verify payments.
 PAYMENT_AMOUNT_BTC = 0.001
 
 SCANNER_STATE_FILE = "whale_scanner_state.json"
 
 SATOSHIS_PER_BTC = 100_000_000
 
-# Limit requests during a manual recent-activity scan.
 MAX_BLOCKS_TO_SCAN = 3
 MAX_TRANSACTIONS_PER_BLOCK = 25
-MAX_DORMANT_INPUTS_TO_CHECK = 100
+MAX_DORMANT_TRANSACTIONS_TO_CHECK = 100
 
 
 # ============================================================
@@ -48,6 +45,7 @@ MAX_DORMANT_INPUTS_TO_CHECK = 100
 
 def fetch_json(url, timeout=15):
     """Fetch JSON from a public API."""
+
     try:
         request = urllib.request.Request(
             url,
@@ -70,6 +68,7 @@ def fetch_json(url, timeout=15):
 
 def number(value):
     """Format an integer safely."""
+
     try:
         return f"{int(value):,}"
     except (ValueError, TypeError, OverflowError):
@@ -78,6 +77,7 @@ def number(value):
 
 def btc(satoshis):
     """Convert satoshis to BTC."""
+
     try:
         return (
             f"{int(satoshis) / SATOSHIS_PER_BTC:.8f}"
@@ -88,6 +88,7 @@ def btc(satoshis):
 
 def time_utc(timestamp):
     """Format a Unix timestamp as UTC."""
+
     try:
         return datetime.fromtimestamp(
             int(timestamp),
@@ -104,9 +105,7 @@ def address_link(address):
         safe="",
     )
 
-    return (
-        f"https://mempool.space/address/{encoded}"
-    )
+    return f"https://mempool.space/address/{encoded}"
 
 
 def transaction_link(txid):
@@ -123,13 +122,8 @@ def block_link(block_hash):
 
 def send_telegram_alert(message):
     """
-    Send a Telegram message using credentials stored in
+    Send a Telegram message using credentials in
     Streamlit Secrets.
-
-    Required Streamlit Secrets:
-
-    TELEGRAM_BOT_TOKEN = "your private bot token"
-    TELEGRAM_CHAT_ID = "@YourChannelUsername"
     """
 
     try:
@@ -137,11 +131,10 @@ def send_telegram_alert(message):
         chat_id = st.secrets["TELEGRAM_CHAT_ID"]
 
         if not token or not chat_id:
-            print("Telegram token or chat ID is empty.")
             return False
 
         url = (
-            f"https://api.telegram.org/"
+            "https://api.telegram.org/"
             f"bot{token}/sendMessage"
         )
 
@@ -179,26 +172,19 @@ def send_telegram_alert(message):
             )
 
     except Exception as error:
-        # Do not print or expose the bot token.
         print(
             "Telegram alert failed:",
             type(error).__name__,
         )
-
         return False
 
 
 # ============================================================
-# DORMANT WHALE SCANNER STATE
+# SCANNER STATE
 # ============================================================
 
 def load_scanner_state():
-    """
-    Load previously alerted transaction IDs.
-
-    The local file may not persist permanently on Streamlit
-    Cloud. For durable history, use a persistent database.
-    """
+    """Load recorded Telegram alert transaction IDs."""
 
     try:
         if not os.path.exists(SCANNER_STATE_FILE):
@@ -230,7 +216,8 @@ def load_scanner_state():
 
 
 def save_scanner_state(state):
-    """Save the alert history."""
+    """Save alert history to local storage."""
+
     try:
         temporary_file = SCANNER_STATE_FILE + ".tmp"
 
@@ -253,7 +240,6 @@ def save_scanner_state(state):
             "Could not save scanner state:",
             type(error).__name__,
         )
-
         return False
 
 
@@ -264,12 +250,8 @@ def save_scanner_state(state):
 @st.cache_data(ttl=30)
 def get_network():
     return {
-        "blocks": fetch_json(
-            f"{API}/blocks"
-        ),
-        "mempool": fetch_json(
-            f"{API}/mempool"
-        ),
+        "blocks": fetch_json(f"{API}/blocks"),
+        "mempool": fetch_json(f"{API}/mempool"),
         "fees": fetch_json(
             f"{API}/v1/fees/recommended"
         ),
@@ -316,23 +298,17 @@ def get_address(address):
 
 @st.cache_data(ttl=60)
 def get_transaction(txid):
-    return fetch_json(
-        f"{API}/tx/{txid}"
-    )
+    return fetch_json(f"{API}/tx/{txid}")
 
 
 @st.cache_data(ttl=60)
 def get_recent_transactions():
     """
-    Fetch a limited sample of transactions from the
-    latest confirmed blocks.
-
-    This is not a complete blockchain scan.
+    Fetch a limited sample of transactions from
+    the latest confirmed blocks.
     """
 
-    blocks = fetch_json(
-        f"{API}/blocks"
-    )
+    blocks = fetch_json(f"{API}/blocks")
 
     if not isinstance(blocks, list):
         return []
@@ -381,19 +357,10 @@ def check_dormant_whale_transaction(
     dormancy_years,
 ):
     """
-    Inspect transaction inputs to identify old outputs
-    being spent in the recent transaction sample.
+    Identify old Bitcoin outputs being spent.
 
-    A qualifying input must:
-      - Have a known previous output value.
-      - Meet the selected BTC threshold.
-      - Have a known previous transaction.
-      - Have a confirmed parent transaction.
-      - Have remained unspent until the current spend.
-      - Be older than the selected dormancy period.
-
-    This identifies a qualifying old output being spent.
-    It does not prove the current owner's identity.
+    This checks a limited sample of recent confirmed
+    transactions. It is not a complete blockchain scan.
     """
 
     if not isinstance(tx, dict):
@@ -406,13 +373,14 @@ def check_dormant_whale_transaction(
 
     status = tx.get("status", {})
 
-    # Only analyze confirmed spending transactions.
+    if not isinstance(status, dict):
+        return []
+
     if not status.get("confirmed"):
         return []
 
     now = int(time.time())
 
-    # Approximate year length for the selected target.
     dormancy_seconds = (
         int(dormancy_years)
         * 365
@@ -421,9 +389,7 @@ def check_dormant_whale_transaction(
         * 60
     )
 
-    threshold_timestamp = (
-        now - dormancy_seconds
-    )
+    threshold_timestamp = now - dormancy_seconds
 
     matches = []
 
@@ -433,6 +399,7 @@ def check_dormant_whale_transaction(
             continue
 
         previous_txid = vin.get("txid")
+        previous_output_index = vin.get("vout")
         prevout = vin.get("prevout") or {}
 
         if not previous_txid:
@@ -442,9 +409,7 @@ def check_dormant_whale_transaction(
             continue
 
         value_satoshis = prevout.get("value")
-        address = prevout.get(
-            "scriptpubkey_address"
-        )
+        address = prevout.get("scriptpubkey_address")
 
         if not isinstance(value_satoshis, int):
             continue
@@ -459,19 +424,15 @@ def check_dormant_whale_transaction(
         if not address:
             continue
 
-        # Look up the parent transaction to establish
-        # the age of the output being spent.
-        previous_tx = get_transaction(
-            previous_txid
-        )
+        previous_tx = get_transaction(previous_txid)
 
         if not isinstance(previous_tx, dict):
             continue
 
-        previous_status = previous_tx.get(
-            "status",
-            {},
-        )
+        previous_status = previous_tx.get("status", {})
+
+        if not isinstance(previous_status, dict):
+            continue
 
         if not previous_status.get("confirmed"):
             continue
@@ -482,6 +443,37 @@ def check_dormant_whale_transaction(
 
         if not isinstance(previous_block_time, int):
             continue
+
+        # Confirm the exact referenced output when the
+        # parent transaction includes its output details.
+        previous_outputs = previous_tx.get("vout", [])
+
+        if isinstance(previous_outputs, list):
+            if isinstance(previous_output_index, int):
+                if 0 <= previous_output_index < len(previous_outputs):
+
+                    exact_output = previous_outputs[
+                        previous_output_index
+                    ]
+
+                    if isinstance(exact_output, dict):
+
+                        exact_value = exact_output.get("value")
+                        exact_address = exact_output.get(
+                            "scriptpubkey_address"
+                        )
+
+                        if (
+                            isinstance(exact_value, int)
+                            and exact_value != value_satoshis
+                        ):
+                            continue
+
+                        if (
+                            exact_address
+                            and exact_address != address
+                        ):
+                            continue
 
         if previous_block_time > threshold_timestamp:
             continue
@@ -509,11 +501,7 @@ def scan_dormant_whale_transaction(
     min_whale_btc,
     dormancy_years,
 ):
-    """
-    Detect qualifying old outputs being spent and send
-    a Telegram alert only if the spending transaction
-    has not already been recorded.
-    """
+    """Detect qualifying spends and send Telegram alerts."""
 
     if not isinstance(tx, dict):
         return 0
@@ -544,18 +532,12 @@ def scan_dormant_whale_transaction(
     alert_lines = [
         "DORMANT BITCOIN WHALE ALERT",
         "",
-        (
-            f"Selected dormancy target: "
-            f"{dormancy_years} years"
-        ),
-        (
-            f"Minimum output value: "
-            f"{min_whale_btc:.8f} BTC"
-        ),
+        f"Selected dormancy target: {dormancy_years} years",
+        f"Minimum output value: {min_whale_btc:.8f} BTC",
         "",
         (
-            "A qualifying old Bitcoin output "
-            "was spent in a recent confirmed transaction."
+            "A qualifying old Bitcoin output was spent "
+            "in a recent confirmed transaction."
         ),
         "",
         f"Spending transaction: {txid}",
@@ -563,10 +545,7 @@ def scan_dormant_whale_transaction(
         "",
     ]
 
-    for index, match in enumerate(
-        matches[:10],
-        start=1,
-    ):
+    for index, match in enumerate(matches[:10], start=1):
 
         alert_lines.extend(
             [
@@ -601,8 +580,6 @@ def scan_dormant_whale_transaction(
 
     message = "\n".join(alert_lines)
 
-    # Do not mark the transaction as alerted if Telegram
-    # delivery fails.
     if not send_telegram_alert(message):
         return 0
 
@@ -718,9 +695,7 @@ with st.sidebar:
         st.cache_data.clear()
         st.rerun()
 
-    st.caption(
-        "Public blockchain information only."
-    )
+    st.caption("Public blockchain information only.")
 
     st.caption(
         "Never enter a wallet recovery phrase "
@@ -736,9 +711,9 @@ st.header("Live Bitcoin Network")
 
 network = get_network()
 
-blocks = network["blocks"]
-mempool = network["mempool"]
-fees = network["fees"]
+blocks = network.get("blocks")
+mempool = network.get("mempool")
+fees = network.get("fees")
 
 latest = (
     blocks[0]
@@ -804,19 +779,12 @@ market = get_market()
 
 if (
     isinstance(price_info, dict)
-    and isinstance(
-        price_info.get("bitcoin"),
-        dict,
-    )
+    and isinstance(price_info.get("bitcoin"), dict)
 ):
 
     price = price_info["bitcoin"].get("usd")
-    change = price_info["bitcoin"].get(
-        "usd_24h_change"
-    )
-    updated = price_info["bitcoin"].get(
-        "last_updated_at"
-    )
+    change = price_info["bitcoin"].get("usd_24h_change")
+    updated = price_info["bitcoin"].get("last_updated_at")
 
     if isinstance(price, (int, float)):
 
@@ -838,9 +806,7 @@ if (
         )
 
     else:
-        st.warning(
-            "Current price is unavailable."
-        )
+        st.warning("Current price is unavailable.")
 
 else:
     st.warning(
@@ -858,10 +824,7 @@ if (
 
         chart = pd.DataFrame(
             market["prices"],
-            columns=[
-                "Timestamp",
-                "Price USD",
-            ],
+            columns=["Timestamp", "Price USD"],
         )
 
         chart["Time"] = pd.to_datetime(
@@ -870,9 +833,7 @@ if (
             utc=True,
         )
 
-        chart = chart[
-            ["Time", "Price USD"]
-        ]
+        chart = chart[["Time", "Price USD"]]
 
         st.subheader(
             "Reported BTC Price History — 24 Hours"
@@ -916,4 +877,27 @@ if isinstance(fees, dict):
     with f3:
         st.metric(
             "Low Priority",
-            f"{number(fees.get('hourFee'))} s
+            f"{number(fees.get('hourFee'))} sat/vB",
+        )
+
+else:
+    st.warning(
+        "Transaction fee data is temporarily unavailable."
+    )
+
+
+# ============================================================
+# NETWORK DIFFICULTY
+# ============================================================
+
+st.header("Mining Difficulty")
+
+difficulty = network.get("difficulty")
+
+if isinstance(difficulty, dict):
+
+    d1, d2 = st.columns(2)
+
+    with d1:
+        st.metric(
+            "Difficulty 
