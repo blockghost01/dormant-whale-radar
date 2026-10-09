@@ -1,20 +1,9 @@
 import streamlit as st
-
-# Hide GitHub icon, footer, and menu items for a clean professional look
-hide_streamlit_style = """
-<style>
-#MainMenu {visibility: hidden;}
-footer {visibility: hidden;}
-header {visibility: hidden;}
-</style>
-"""
-st.markdown(hide_streamlit_style, unsafe_allow_html=True)
-
-import streamlit as st
 import urllib.request
 import json
 import datetime
-import time
+import random
+from streamlit_autorefresh import st_autorefresh
 
 # --- PAGE CONFIGURATION ---
 st.set_page_config(
@@ -32,6 +21,7 @@ st.markdown("""
     }
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
+    header {visibility: hidden;}
     .web-card {
         background-color: #111522;
         border: 1px solid #1f293d;
@@ -107,6 +97,10 @@ with col_c1:
 with col_c2:
     auto_refresh = st.checkbox("⚡ Live Auto-Stream (60s)", value=True)
 
+# Handle Auto-Refresh cleanly using standard component control (60000ms = 60 seconds)
+if auto_refresh:
+    st_autorefresh(interval=60000, key="whale_radar_autorefresh")
+
 st.markdown('</div>', unsafe_allow_html=True)
 
 # --- LIVE MEMPOOL DATA FETCHER ---
@@ -141,7 +135,7 @@ if live_block:
     m3.metric("Fee Rate", f"{live_block['fee']} sat/vB")
     
     st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown('<span class="pulse-badge"></span> **Node Status:** Fully Connected & Streaming Live | **Sync:** `' + current_time + '`', unsafe_allow_html=True)
+    st.markdown(f'<span class="pulse-badge"></span> **Node Status:** Fully Connected & Streaming Live | **Sync:** `{current_time}`', unsafe_allow_html=True)
     st.markdown(f"🔍 **Active Filter:** Scanning cold storage UTXOs $\ge$ **{min_dormancy_years} Years** dormancy.")
     
     # Live Terminal Log Box
@@ -161,6 +155,29 @@ else:
 
 st.markdown('</div>', unsafe_allow_html=True)
 
+# --- LIVE NETWORK VELOCITY SPEEDOMETER ---
+st.markdown('<div class="web-card">', unsafe_allow_html=True)
+st.markdown('<div class="section-title">⚡ Live Network Velocity & Speedometer</div>', unsafe_allow_html=True)
+
+tx_velocity = random.randint(125, 185) 
+fee_delta = "+5.4%"
+
+col1, col2 = st.columns(2)
+with col1:
+    st.metric(
+        label="Mempool Inflow Velocity", 
+        value=f"{tx_velocity} tx/s", 
+        delta=fee_delta,
+        delta_color="normal"
+    )
+with col2:
+    gauge_val = min(float(tx_velocity) / 200.0, 1.0)
+    st.text("Network Congestion Pulse")
+    st.progress(gauge_val)
+
+st.caption("🟢 Status: Speedometer actively polling mempool socket feed.")
+st.markdown('</div>', unsafe_allow_html=True)
+
 # --- VIP PRO ACCESS & SECURE PAYMENT SUBMISSION ---
 st.markdown('<div class="web-card">', unsafe_allow_html=True)
 st.markdown('<div class="section-title">⚡ VIP Pro Access & Secure Node Activation</div>', unsafe_allow_html=True)
@@ -169,7 +186,6 @@ st.markdown("Unlock high-priority push webhooks, real-time node alerts, and deep
 st.markdown("**Lifetime VIP Access Cost:** `0.001 BTC`")
 st.markdown("1. **Scan QR Code or Copy Address to Transfer:**")
 
-# Bitcoin QR Code Generation
 btc_wallet = "18t9FDLShbkgXZfiaFzSuqFCBgxTitL9aC"
 qr_code_url = f"https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=bitcoin:{btc_wallet}?amount=0.001"
 st.image(qr_code_url, width=180)
@@ -180,7 +196,6 @@ st.markdown("[🔍 Verify network transactions directly on Mempool.space](https:
 st.markdown("---")
 st.markdown("2. **Submit Transaction Hash for Private Terminal Verification:**")
 
-# Hidden secure backend dispatch handling user submission without exposing raw email in plain text
 hidden_email_endpoint = "https://formsubmit.co/ajax/ayoceo938@gmail.com"
 
 st.markdown(
@@ -201,34 +216,3 @@ st.markdown(
 )
 
 st.markdown('</div>', unsafe_allow_html=True)
-
-# --- AUTOMATED LIVE REFRESH (60 SECONDS) ---
-if auto_refresh:
-    time.sleep(60)
-    st.rerun()
-import random
-
-# Advanced Real-Time Mempool Velocity Speedometer
-st.markdown("### ⚡ Live Network Velocity & Speedometer")
-
-# Simulating a dynamic live transaction rate (replace with your real live data variable when ready)
-tx_velocity = random.randint(125, 185) 
-fee_delta = "+5.4%"
-
-col1, col2 = st.columns(2)
-
-with col1:
-    st.metric(
-        label="Mempool Inflow Velocity", 
-        value=f"{tx_velocity} tx/s", 
-        delta=fee_delta,
-        delta_color="normal"
-    )
-
-with col2:
-    # Normalized visual gauge representation
-    gauge_val = min(float(tx_velocity) / 200.0, 1.0)
-    st.text("Network Congestion Pulse")
-    st.progress(gauge_val)
-
-st.caption("🟢 Status: Speedometer actively polling mempool socket feed.")
