@@ -28,7 +28,9 @@ SCANNER_STATE_FILE = "whale_scanner_state.json"
 SATOSHIS_PER_BTC = 100_000_000
 
 MAX_BLOCKS_TO_SCAN = 3
-MAX_TRANSACTIONS_PER_BLOCK = 25
+MAX_TRANSACTIONS_PER_BLOCK = 50
+PAYMENT_AMOUNT_BTC = 0.001
+PAYMENT_CONFIRMATIONS_REQUIRED = 1
 
 # ============================================================
 # GENERAL DATA HELPERS
@@ -83,7 +85,8 @@ def block_link(block_hash):
     return f"https://mempool.space/block/{block_hash}"
 
 
-# ============================================================# TELEGRAM ALERT CONNECTION
+# ============================================================
+# TELEGRAM ALERT CONNECTION
 # ============================================================
 
 def send_telegram_alert(message):
@@ -158,7 +161,8 @@ def save_scanner_state(state):
         return False
 
 
-# ============================================================# NETWORK AND MARKET DATA
+# ============================================================
+# NETWORK AND MARKET DATA
 # ============================================================
 
 @st.cache_data(ttl=30)
@@ -201,6 +205,59 @@ def get_address(address):
 @st.cache_data(ttl=60)
 def get_transaction(txid):
     return fetch_json(f"{API}/tx/{txid}")
+
+
+@st.cache_data(ttl=30)
+def get_address_transactions(address):
+    """Return recent transactions for a public Bitcoin address."""
+    encoded = urllib.parse.quote(address, safe="")
+    result = fetch_json(f"{API}/address/{encoded}/txs")
+    return result if isinstance(result, list) else []
+
+
+def get_incoming_payments(address, reference_btc=PAYMENT_AMOUNT_BTC):
+    """Find outputs sent to the configured address in recent address history.
+
+    This reports on-chain observations only; it does not authenticate customers,
+    issue refunds, or automatically activate a service.
+    """
+    transactions = get_address_transactions(address)
+    network = get_network()
+    blocks = network.get("blocks") if isinstance(network, dict) else None
+    tip_height = blocks[0].get("height") if isinstance(blocks, list) and blocks and isinstance(blocks[0], dict) else None
+    payments = []
+    seen = set()
+    for tx in transactions:
+        if not isinstance(tx, dict):
+            continue
+        txid = tx.get("txid")
+        status = tx.get("status") if isinstance(tx.get("status"), dict) else {}
+        for index, output in enumerate(tx.get("vout", [])):
+            if not isinstance(output, dict) or output.get("scriptpubkey_address") != address:
+                continue
+            value = output.get("value")
+            if not isinstance(value, int) or value <= 0:
+                continue
+            key = f"{txid}:{index}"
+            if key in seen:
+                continue
+            seen.add(key)
+            confirmed = bool(status.get("confirmed"))
+            block_height = status.get("block_height")
+            confirmations = max(0, int(tip_height) - int(block_height) + 1) if confirmed and isinstance(tip_height, int) and isinstance(block_height, int) else 0
+            amount_btc = value / SATOSHIS_PER_BTC
+            payments.append({
+                "Transaction": txid,
+                "Output index": index,
+                "Amount (BTC)": amount_btc,
+                "Confirmations": confirmations,
+                "Status": "Confirmed" if confirmations >= PAYMENT_CONFIRMATIONS_REQUIRED else ("Unconfirmed" if not confirmed else "Confirmed; tip unavailable"),
+                "Matches reference amount": abs(amount_btc - reference_btc) < 0.00000001,
+                "Time (UTC)": time_utc(status.get("block_time")),
+                "Explorer": transaction_link(txid) if txid else "",
+            })
+    payments.sort(key=lambda item: item["Time (UTC)"], reverse=True)
+    return payments
 
 
 @st.cache_data(ttl=60)
@@ -372,7 +429,8 @@ def scan_dormant_whale_transaction(tx, min_whale_btc, dormancy_years):
     return len(matches)
 
 
-# ============================================================# DESIGN
+# ============================================================
+# DESIGN
 # ============================================================
 
 st.markdown(
@@ -420,8 +478,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# ============================================================
-# SIDEBAR SETTINGS
+# ============================================================# SIDEBAR SETTINGS
 # ============================================================
 
 with st.sidebar:
@@ -540,7 +597,8 @@ if isinstance(market, dict) and isinstance(market.get("prices"), list):
     except Exception:
         st.info("The chart could not be rendered. Try refreshing the page.")
 
-# ============================================================# BITCOIN TRANSACTION FEES
+# ============================================================
+# BITCOIN TRANSACTION FEES
 # ============================================================
 
 st.header("Bitcoin Transaction Fees")
@@ -612,8 +670,7 @@ if isinstance(blocks, list) and blocks:
 else:
     st.info("Recent block information is temporarily unavailable.")
 
-# ============================================================
-# WALLET INSPECTOR
+# ============================================================# WALLET INSPECTOR
 # ============================================================
 
 st.header("Bitcoin Wallet Inspector")
@@ -684,7 +741,8 @@ if st.button("Inspect Wallet", use_container_width=True):
         else:
             st.error("Wallet data could not be retrieved. Check the address and try again.")
 
-# ============================================================# LARGE OUTPUT RESEARCH
+# ============================================================
+# LARGE OUTPUT RESEARCH
 # ============================================================
 
 st.header("Large Bitcoin Output Research")
@@ -747,27 +805,39 @@ if st.button("Find Large Outputs in Sample", use_container_width=True):
 
 st.header("Dormant Whale Scanner")
 st.warning(
-    "The scanner examines a limited sample of transactions in recent blocks. "
-    "It does not scan the entire blockchain and cannot guarantee every dormant "
-    "whale transaction will be found."
+    "Coverage is limited to a sample of transactions in the newest blocks. "
+    "This is not a historical, whole-chain scan. The scanner verifies candidate input "
+    "outputs against their previous confirmed transactions; API limits or missing data "
+    "can cause candidates to be skipped."
 )
 st.write(f"Minimum output: **{min_btc:.8f} BTC**")
 st.write(f"Dormancy target: **{dormancy_years} years**")
 
 if st.button("Run Dormant Whale Scan", type="primary", use_container_width=True):
-    with st.spinner("Examining a limited sample of recent transactions..."):
+    with st.spinner("Examining a limited sample of recent transactions and verifying old outputs..."):
         recent_transactions = get_recent_transactions()
         total_matches = 0
         total_alerts = 0
+        result_rows = []
         progress_bar = st.progress(0.0)
         total = len(recent_transactions)
 
         for index, tx in enumerate(recent_transactions):
             matches = check_dormant_whale_transaction(tx, min_btc, dormancy_years)
             total_matches += len(matches)
-            total_alerts += scan_dormant_whale_transaction(
-                tx, min_btc, dormancy_years
-            )
+            for match in matches:
+                result_rows.append({
+                    "Output BTC": match["value_btc"],
+                    "Dormant days": match["dormant_days"],
+                    "Previous output address": match["address"],
+                    "Previous transaction": match["previous_txid"],
+                    "Spending transaction": match["txid"],
+                    "Previous confirmation (UTC)": time_utc(match["block_time"]),
+                })
+            if matches:
+                total_alerts += scan_dormant_whale_transaction(
+                    tx, min_btc, dormancy_years
+                )
             if total:
                 progress_bar.progress((index + 1) / total)
 
@@ -781,12 +851,15 @@ if st.button("Run Dormant Whale Scan", type="primary", use_container_width=True)
     if total == 0:
         st.warning("No transactions were retrieved. The blockchain API may be unavailable.")
     elif total_matches == 0:
-        st.info("No qualifying dormant outputs were found in this limited sample.")
+        st.info("No qualifying dormant outputs were found in this limited sample. This does not mean none exist elsewhere on the blockchain.")
     else:
-        st.success("Scan completed. Check the Telegram alert count for delivery results.")
+        st.success("Scan completed for the retrieved sample. Verify each finding in the explorer before drawing conclusions.")
+        import pandas as pd
+        st.dataframe(pd.DataFrame(result_rows), use_container_width=True, hide_index=True)
+        for txid in sorted({row["Spending transaction"] for row in result_rows}):
+            st.markdown(f"[Verify spending transaction {txid[:18]}…]({transaction_link(txid)})")
 
-# ============================================================
-# TELEGRAM CONNECTION TEST
+# ============================================================# TELEGRAM CONNECTION TEST
 # ============================================================
 
 st.header("Telegram Alerts")
@@ -806,21 +879,49 @@ if st.button("Send Telegram Test", use_container_width=True):
             "TELEGRAM_CHAT_ID are configured correctly in Streamlit Secrets."
         )
 
-# ============================================================# PAYMENT INFORMATION
+# ============================================================
+# PAYMENT MONITORING
 # ============================================================
 
-st.header("Payment Information")
-
-st.write("Configured payment address:")
+st.header("Payment Monitoring")
+st.write("Configured receiving address:")
 st.code(WALLET)
-
-st.write("Configured reference amount:")
-st.metric("Reference Amount", f"{0.001:.3f} BTC")
-
+st.metric("Reference Amount", f"{PAYMENT_AMOUNT_BTC:.3f} BTC")
 st.caption(
-    "This section displays payment information only. It does not verify payments, "
-    "activate accounts, or confirm that a transaction has been received."
+    "This checks recent public transactions for outputs sent to the configured address. "
+    "It is an on-chain monitor, not a customer checkout system or proof of who paid. "
+    "Do not treat an unconfirmed transaction as a completed payment."
 )
+
+if st.button("Check Incoming Payments", type="primary", use_container_width=True):
+    with st.spinner("Checking recent address transactions and confirmation status..."):
+        payment_rows = get_incoming_payments(WALLET)
+    if payment_rows:
+        import pandas as pd
+        confirmed_rows = [row for row in payment_rows if row["Status"] == "Confirmed"]
+        matching_rows = [row for row in confirmed_rows if row["Matches reference amount"]]
+        p1, p2, p3 = st.columns(3)
+        p1.metric("Recent Outputs", number(len(payment_rows)))
+        p2.metric("Confirmed Outputs", number(len(confirmed_rows)))
+        p3.metric("Confirmed Reference-Amount Outputs", number(len(matching_rows)))
+        st.dataframe(
+            pd.DataFrame([{k: v for k, v in row.items() if k != "Explorer"} for row in payment_rows]),
+            use_container_width=True,
+            hide_index=True,
+        )
+        for row in payment_rows[:10]:
+            if row["Transaction"]:
+                st.markdown(f"[Open transaction {row['Transaction'][:18]}…]({row['Explorer']})")
+        st.warning(
+            "A matching amount alone does not identify a customer or payment order. "
+            "This page does not automatically activate accounts, and this app's local filesystem "
+            "is not a durable payment ledger."
+        )
+    else:
+        st.info(
+            "No recent incoming outputs were returned for this address, or the public API was unavailable. "
+            "This is not proof that the address has never received a payment."
+        )
 
 # ============================================================
 # FOOTER AND AUTO-REFRESH
@@ -828,8 +929,8 @@ st.caption(
 
 st.divider()
 st.caption(
-    "Dormant Whale Radar · Public blockchain data research tool. "
-    "Results depend on third-party API availability and the limited sample scanned."
+    "Dormant Whale Radar · Public blockchain research tool. "
+    "Scanner coverage is sampled, not whole-chain; payment records are fetched from public address history and are not a durable ledger."
 )
 
 if auto_refresh:
