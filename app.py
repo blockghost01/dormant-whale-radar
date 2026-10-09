@@ -594,3 +594,9 @@ st.caption(
 if auto_refresh:
     time.sleep(refresh_seconds)
     st.rerun()
+
+if st.button("Test Telegram Connection"):
+    if send_telegram_alert("Dormant Whale Radar: Telegram connection successful!"):
+        st.success("Telegram message sent successfully!")
+    else:
+        st.error("Failed to send. Check your Telegram Secrets.")
