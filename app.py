@@ -1,218 +1,625 @@
 import streamlit as st
-import urllib.request
-import json
-import datetime
-import random
-from streamlit_autorefresh import st_autorefresh
+import requests
+import time
+import html
+from datetime import datetime, timezone
 
-# --- PAGE CONFIGURATION ---
+============================================================
+
+PAGE CONFIGURATION
+
+============================================================
+
 st.set_page_config(
-    page_title="Dormant Whale Radar | Elite On-Chain Terminal", 
-    page_icon="🐋", 
-    layout="centered"
+page_title="Dormant Whale Radar | Bitcoin Intelligence",
+page_icon="🐋",
+layout="wide",
+initial_sidebar_state="collapsed",
 )
 
-# --- CUSTOM CSS FOR PROFESSIONAL WEB DESIGN & GLOW ---
-st.markdown("""
-    <style>
-    .stApp {
-        background-color: #07090e;
-        color: #f3f4f6;
-    }
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
-    .web-card {
-        background-color: #111522;
-        border: 1px solid #1f293d;
-        border-radius: 12px;
-        padding: 20px;
-        margin-bottom: 16px;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
-    }
-    .terminal-box {
-        background-color: #030712;
-        border: 1px solid #1e293b;
-        border-radius: 8px;
-        padding: 15px;
-        font-family: 'Courier New', Courier, monospace;
-        color: #38bdf8;
-        font-size: 13px;
-        line-height: 1.5;
-    }
-    .section-title {
-        font-size: 18px;
-        font-weight: 700;
-        color: #ffffff;
-        margin-bottom: 10px;
-    }
-    .bio-box {
-        font-size: 13px;
-        color: #9ca3af;
-        line-height: 1.6;
-        background-color: #0c101d;
-        padding: 12px;
-        border-radius: 8px;
-        border-left: 3px solid #38bdf8;
-        margin-bottom: 15px;
-    }
-    .pulse-badge {
-        display: inline-block;
-        width: 10px;
-        height: 10px;
-        background-color: #22c55e;
-        border-radius: 50%;
-        box-shadow: 0 0 8px #22c55e;
-        margin-right: 6px;
-    }
-    </style>
-""", unsafe_allow_html=True)
+============================================================
 
-# --- HERO HEADER ---
-st.markdown("""
-    <div style="text-align: center; padding: 10px 0 20px 0;">
-        <h1 style="color: #ffffff; font-size: 28px; margin-bottom: 5px;">🐋 Bitcoin Dormant Whale Radar</h1>
-        <p style="color: #9ca3af; font-size: 14px;">Institutional-Grade On-Chain Intelligence & Live Ledger Stream</p>
-    </div>
-""", unsafe_allow_html=True)
+CONFIGURATION
 
-# --- PROFESSIONAL PLATFORM BIO & SINCERITY ---
-st.markdown('<div class="web-card">', unsafe_allow_html=True)
-st.markdown('<div class="section-title">📌 Terminal Overview & Genuine Mission</div>', unsafe_allow_html=True)
+============================================================
+
+API_BASE = "https://mempool.space/api"
+EXPLORER_BASE = "https://mempool.space"
+
+Public receiving address displayed for the proposed VIP feature.
+
+Verify ownership and payment-processing arrangements before use.
+
+BTC_WALLET = "18t9FDLShbkgXZfiaFzSuqFCBgxTitL9aC"
+
+============================================================
+
+CUSTOM DESIGN
+
+============================================================
+
 st.markdown(
-    """<div class="bio-box">
-    <b>Dormant Whale Radar</b> is built with absolute sincerity for macro analysts, traders, and Bitcoin researchers. We track ancient, untouched Bitcoin allocations waking up across the global ledger with zero fluff or hidden gimmicks. Our goal is to provide pure, transparent on-chain telemetry straight from the mempool to help you stay ahead of legacy asset movements.
-    </div>""", 
-    unsafe_allow_html=True
+"""
+<style>
+.stApp {
+background: #07090e;
+color: #f3f4f6;
+}
+
+#MainMenu, footer, header {
+    visibility: hidden;
+}
+
+.block-container {
+    max-width: 1250px;
+    padding-top: 1.5rem;
+    padding-bottom: 3rem;
+}
+
+.hero {
+    text-align: center;
+    padding: 25px 10px 30px 10px;
+    background: linear-gradient(145deg, #101827, #07090e);
+    border: 1px solid #1f293d;
+    border-radius: 18px;
+    margin-bottom: 24px;
+}
+
+.hero h1 {
+    color: #ffffff;
+    font-size: clamp(25px, 4vw, 38px);
+    margin-bottom: 8px;
+}
+
+.hero p {
+    color: #9ca3af;
+    font-size: 14px;
+}
+
+.web-card {
+    background: #111522;
+    border: 1px solid #1f293d;
+    border-radius: 14px;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+.section-title {
+    font-size: 19px;
+    font-weight: 700;
+    color: #ffffff;
+    margin-bottom: 12px;
+}
+
+.terminal-box {
+    background: #030712;
+    border: 1px solid #1e293b;
+    border-radius: 9px;
+    padding: 16px;
+    color: #38bdf8;
+    font-family: monospace;
+    font-size: 13px;
+    line-height: 1.9;
+    overflow-wrap: anywhere;
+}
+
+.muted {
+    color: #9ca3af;
+    font-size: 13px;
+    line-height: 1.7;
+}
+
+.blue {
+    color: #38bdf8;
+}
+
+.status {
+    color: #22c55e;
+    font-weight: 700;
+}
+
+.warning-box {
+    padding: 14px;
+    border: 1px solid #854d0e;
+    background: #21180a;
+    border-radius: 9px;
+    color: #fde68a;
+    line-height: 1.7;
+    font-size: 13px;
+}
+
+.footer-note {
+    text-align: center;
+    color: #6b7280;
+    font-size: 12px;
+    padding: 20px;
+}
+
+div.stButton > button {
+    border-radius: 8px;
+    min-height: 42px;
+    font-weight: 600;
+}
+</style>
+""",
+unsafe_allow_html=True,
+
 )
-st.markdown('</div>', unsafe_allow_html=True)
 
-# --- CONTROLS BAR ---
-st.markdown('<div class="web-card">', unsafe_allow_html=True)
-st.markdown('<div class="section-title">⚙️ Intelligence Parameters</div>', unsafe_allow_html=True)
+============================================================
 
-col_c1, col_c2 = st.columns(2)
-with col_c1:
-    min_dormancy_years = st.slider("Min Coin Dormancy Threshold (Years)", min_value=1, max_value=20, value=5)
-with col_c2:
-    auto_refresh = st.checkbox("⚡ Live Auto-Stream (60s)", value=True)
+LIVE BITCOIN API
 
-# Handle Auto-Refresh cleanly using standard component control (60000ms = 60 seconds)
-if auto_refresh:
-    st_autorefresh(interval=60000, key="whale_radar_autorefresh")
+============================================================
 
-st.markdown('</div>', unsafe_allow_html=True)
+@st.cache_data(ttl=30, show_spinner=False)
+def fetch_latest_block():
+try:
+response = requests.get(
+f"{API_BASE}/blocks",
+timeout=12,
+)
+response.raise_for_status()
 
-# --- LIVE MEMPOOL DATA FETCHER ---
-@st.cache_data(ttl=60)
-def fetch_live_data():
-    try:
-        url = "https://mempool.space/api/v1/blocks"
-        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-        response = urllib.request.urlopen(req)
-        data = json.loads(response.read().decode())
-        latest = data[0]
-        return {
-            "height": latest.get('height'),
-            "tx_count": latest.get('tx_count'),
-            "fee": latest.get('medianFee', 12),
-            "hash": latest.get('id', '0000...')[:14] + "..."
-        }
-    except:
+    blocks = response.json()
+
+    if not isinstance(blocks, list) or not blocks:
         return None
 
-live_block = fetch_live_data()
-current_time = datetime.datetime.utcnow().strftime("%H:%M:%S UTC")
+    block = blocks[0]
 
-# --- LIVE METRICS GRID ---
-st.markdown('<div class="web-card">', unsafe_allow_html=True)
-st.markdown('<div class="section-title">📊 Network Telemetry Stream</div>', unsafe_allow_html=True)
+    return {
+        "height": block.get("height"),
+        "hash": block.get("id"),
+        "timestamp": block.get("timestamp"),
+        "tx_count": block.get("tx_count"),
+    }
 
-if live_block:
-    m1, m2, m3 = st.columns(3)
-    m1.metric("Block Height", f"{live_block['height']:,}")
-    m2.metric("Transactions", f"{live_block['tx_count']:,}")
-    m3.metric("Fee Rate", f"{live_block['fee']} sat/vB")
-    
-    st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown(f'<span class="pulse-badge"></span> **Node Status:** Fully Connected & Streaming Live | **Sync:** `{current_time}`', unsafe_allow_html=True)
-    st.markdown(f"🔍 **Active Filter:** Scanning cold storage UTXOs $\ge$ **{min_dormancy_years} Years** dormancy.")
-    
-    # Live Terminal Log Box
-    st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown(
-        f"""<div class="terminal-box">
-[LIVE DISPATCHER CONSOLE - SECURE NODE STREAM]<br>
-> Target Block Hash: {live_block['hash']}<br>
-> Dormancy Threshold: &gt;= {min_dormancy_years} Years Unmoved<br>
-> Socket State: Active handshake with mempool.space gateway.<br>
-> Status: Real-time cryptographic ledger analysis operating smoothly.
-        </div>""", 
-        unsafe_allow_html=True
+except (requests.RequestException, ValueError, TypeError):
+    return None
+
+@st.cache_data(ttl=30, show_spinner=False)
+def fetch_mempool():
+try:
+response = requests.get(
+f"{API_BASE}/mempool",
+timeout=12,
+)
+response.raise_for_status()
+
+    data = response.json()
+
+    return {
+        "count": data.get("count"),
+        "vsize": data.get("vsize"),
+        "total_fee": data.get("total_fee"),
+    }
+
+except (requests.RequestException, ValueError, TypeError):
+    return None
+
+@st.cache_data(ttl=30, show_spinner=False)
+def fetch_fee_estimates():
+try:
+response = requests.get(
+f"{API_BASE}/v1/fees/recommended",
+timeout=12,
+)
+response.raise_for_status()
+
+    data = response.json()
+
+    return data
+
+except (requests.RequestException, ValueError, TypeError):
+    return None
+
+@st.cache_data(ttl=60, show_spinner=False)
+def fetch_recent_blocks():
+try:
+response = requests.get(
+f"{API_BASE}/v1/blocks",
+timeout=12,
+)
+response.raise_for_status()
+
+    data = response.json()
+
+    return data if isinstance(data, list) else []
+
+except (requests.RequestException, ValueError, TypeError):
+    return []
+
+============================================================
+
+HELPERS
+
+============================================================
+
+def format_number(value):
+if isinstance(value, (int, float)):
+return f"{value:,}"
+return "N/A"
+
+def format_btc_sats(value):
+if isinstance(value, (int, float)):
+return f"{value:,} sats"
+return "N/A"
+
+def format_utc(timestamp):
+if not isinstance(timestamp, (int, float)):
+return "N/A"
+
+try:
+    dt = datetime.fromtimestamp(
+        timestamp,
+        tz=timezone.utc,
     )
-else:
-    st.warning("⚠️ Reconnecting to Bitcoin Mempool network nodes...")
+    return dt.strftime("%Y-%m-%d %H:%M:%S UTC")
+except (ValueError, OSError, OverflowError):
+    return "N/A"
 
-st.markdown('</div>', unsafe_allow_html=True)
+============================================================
 
-# --- LIVE NETWORK VELOCITY SPEEDOMETER ---
-st.markdown('<div class="web-card">', unsafe_allow_html=True)
-st.markdown('<div class="section-title">⚡ Live Network Velocity & Speedometer</div>', unsafe_allow_html=True)
+HERO HEADER
 
-tx_velocity = random.randint(125, 185) 
-fee_delta = "+5.4%"
+============================================================
 
-col1, col2 = st.columns(2)
-with col1:
-    st.metric(
-        label="Mempool Inflow Velocity", 
-        value=f"{tx_velocity} tx/s", 
-        delta=fee_delta,
-        delta_color="normal"
-    )
-with col2:
-    gauge_val = min(float(tx_velocity) / 200.0, 1.0)
-    st.text("Network Congestion Pulse")
-    st.progress(gauge_val)
+st.markdown(
+"""
+<div class="hero">
+<h1>🐋 Bitcoin Dormant Whale Radar</h1>
+<p>ON-CHAIN INTELLIGENCE • NETWORK TELEMETRY • BLOCKCHAIN RESEARCH</p>
+<p>Monitor Bitcoin network activity through public blockchain data.</p>
+</div>
+""",
+unsafe_allow_html=True,
+)
 
-st.caption("🟢 Status: Speedometer actively polling mempool socket feed.")
-st.markdown('</div>', unsafe_allow_html=True)
+============================================================
 
-# --- VIP PRO ACCESS & SECURE PAYMENT SUBMISSION ---
-st.markdown('<div class="web-card">', unsafe_allow_html=True)
-st.markdown('<div class="section-title">⚡ VIP Pro Access & Secure Node Activation</div>', unsafe_allow_html=True)
-st.markdown("Unlock high-priority push webhooks, real-time node alerts, and deep historical wallet telemetry.")
+SIDEBAR SETTINGS
 
-st.markdown("**Lifetime VIP Access Cost:** `0.001 BTC`")
-st.markdown("1. **Scan QR Code or Copy Address to Transfer:**")
+============================================================
 
-btc_wallet = "18t9FDLShbkgXZfiaFzSuqFCBgxTitL9aC"
-qr_code_url = f"https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=bitcoin:{btc_wallet}?amount=0.001"
-st.image(qr_code_url, width=180)
+with st.sidebar:
+st.title("⚙️ Radar Settings")
 
-st.code(btc_wallet, language="text")
-st.markdown("[🔍 Verify network transactions directly on Mempool.space](https://mempool.space/address/18t9FDLShbkgXZfiaFzSuqFCBgxTitL9aC)")
+min_dormancy_years = st.slider(
+    "Minimum output age (years)",
+    min_value=1,
+    max_value=20,
+    value=5,
+)
+
+min_whale_btc = st.number_input(
+    "Minimum output value (BTC)",
+    min_value=0.0,
+    max_value=1000000.0,
+    value=10.0,
+    step=1.0,
+)
+
+auto_refresh = st.checkbox(
+    "Automatic refresh",
+    value=False,
+)
+
+refresh_seconds = st.selectbox(
+    "Refresh interval",
+    [30, 60, 120, 300],
+    index=1,
+    format_func=lambda x: f"{x} seconds",
+    disabled=not auto_refresh,
+)
 
 st.markdown("---")
-st.markdown("2. **Submit Transaction Hash for Private Terminal Verification:**")
+st.caption(
+    "The age and value settings are research filters. "
+    "Historical UTXO scanning is not yet connected."
+)
 
-hidden_email_endpoint = "https://formsubmit.co/ajax/ayoceo938@gmail.com"
+============================================================
+
+FETCH LIVE DATA
+
+============================================================
+
+with st.spinner("Connecting to the public Bitcoin data API..."):
+block = fetch_latest_block()
+mempool = fetch_mempool()
+fees = fetch_fee_estimates()
+recent_blocks = fetch_recent_blocks()
+
+checked_at = datetime.now(timezone.utc).strftime(
+"%Y-%m-%d %H:%M:%S UTC"
+)
+
+============================================================
+
+NETWORK TELEMETRY
+
+============================================================
+
+st.markdown(
+'<div class="section-title">📊 Live Network Telemetry</div>',
+unsafe_allow_html=True,
+)
+
+if block:
+height = block.get("height")
+tx_count = block.get("tx_count")
+
+c1, c2, c3 = st.columns(3)
+
+c1.metric(
+    "Latest Block Height",
+    format_number(height),
+)
+
+c2.metric(
+    "Latest Block Transactions",
+    format_number(tx_count),
+)
+
+mempool_count = mempool.get("count") if mempool else None
+
+c3.metric(
+    "Unconfirmed Transactions",
+    format_number(mempool_count),
+)
+
+st.success(f"Bitcoin data endpoint responding • Checked {checked_at}")
+
+else:
+st.error(
+"The Bitcoin data endpoint could not be reached. "
+"Check your internet connection or try refreshing."
+)
+
+st.info(
+    "The rest of the application remains available, "
+    "but live metrics cannot be displayed until the API responds."
+)
+
+st.markdown("---")
+
+============================================================
+
+NETWORK FEES AND CONGESTION
+
+============================================================
+
+st.markdown(
+'<div class="section-title">⚡ Network Fees & Congestion</div>',
+unsafe_allow_html=True,
+)
+
+fee_col1, fee_col2, fee_col3 = st.columns(3)
+
+if fees:
+fee_col1.metric(
+"High Priority Fee",
+f"{fees.get('fastestFee', 'N/A')} sat/vB",
+)
+
+fee_col2.metric(
+    "Medium Priority Fee",
+    f"{fees.get('halfHourFee', 'N/A')} sat/vB",
+)
+
+fee_col3.metric(
+    "Low Priority Fee",
+    f"{fees.get('hourFee', 'N/A')} sat/vB",
+)
+
+else:
+fee_col1.metric("High Priority Fee", "N/A")
+fee_col2.metric("Medium Priority Fee", "N/A")
+fee_col3.metric("Low Priority Fee", "N/A")
+
+if mempool:
+count = mempool.get("count")
+vsize = mempool.get("vsize")
 
 st.markdown(
     f"""
-    <form action="{hidden_email_endpoint}" method="POST" style="background-color: #080c14; padding: 15px; border-radius: 8px; border: 1px solid #1f293d;">
-        <input type="hidden" name="_subject" value="New VIP Terminal License Submission!">
-        <input type="hidden" name="_captcha" value="false">
-        <label style="font-size: 12px; color: #9ca3af;">Bitcoin Transaction ID (TXID):</label><br>
-        <input type="text" name="Transaction_ID" required style="width: 100%; padding: 8px; margin-top: 5px; margin-bottom: 10px; background-color: #111522; color: white; border: 1px solid #374151; border-radius: 4px;"><br>
-        
-        <label style="font-size: 12px; color: #9ca3af;">Your Contact Handle (Email or Secure Handle):</label><br>
-        <input type="text" name="User_Contact" required style="width: 100%; padding: 8px; margin-top: 5px; margin-bottom: 15px; background-color: #111522; color: white; border: 1px solid #374151; border-radius: 4px;"><br>
-        
-        <button type="submit" style="background-color: #38bdf8; color: #000000; font-weight: bold; padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; width: 100%;">🚀 Submit Payment for Node Activation</button>
-    </form>
+    <div class="terminal-box">
+    [MEMPOOL NETWORK MONITOR]<br>
+    API STATUS: {"RESPONDING" if block else "PARTIAL / UNAVAILABLE"}<br>
+    UNCONFIRMED TRANSACTIONS: {format_number(count)}<br>
+    MEMPOOL VIRTUAL SIZE: {format_number(vsize)} vB<br>
+    LAST CHECK: {html.escape(checked_at)}
+    </div>
     """,
-    unsafe_allow_html=True
+    unsafe_allow_html=True,
 )
 
-st.markdown('</div>', unsafe_allow_html=True)
+if isinstance(count, int):
+    congestion = min(count / 100000, 1.0)
+
+    st.caption(
+        "Relative transaction-count indicator "
+        "(not a direct measurement of network capacity)."
+    )
+
+    st.progress(congestion)
+
+else:
+st.warning("Current mempool statistics are unavailable.")
+
+============================================================
+
+DORMANT WHALE RESEARCH
+
+============================================================
+
+st.markdown("---")
+
+st.markdown(
+'<div class="section-title">🐋 Dormant Whale Research Terminal</div>',
+unsafe_allow_html=True,
+)
+
+st.markdown(
+f"""
+<div class="web-card">
+<div class="muted">CURRENT RESEARCH PARAMETERS</div>
+<h3 style="color:#38bdf8">
+{min_dormancy_years}-Year Dormancy Threshold
+</h3>
+<p class="muted">
+Minimum output value: {min_whale_btc:,.2f} BTC
+</p>
+<p class="muted">
+Research mode: Historical Bitcoin output analysis
+</p>
+</div>
+""",
+unsafe_allow_html=True,
+)
+
+st.markdown(
+"""
+<div class="warning-box">
+SCANNER STATUS: HISTORICAL OUTPUT SCANNING NOT YET IMPLEMENTED.<br><br>
+This dashboard currently retrieves live network statistics.
+It does not yet scan all historical Bitcoin outputs or verify
+which older outputs remain unspent. No dormant-whale detections
+are claimed until that data pipeline is implemented.
+</div>
+""",
+unsafe_allow_html=True,
+)
+
+st.markdown("")
+
+with st.expander("What the completed whale scanner will do"):
+st.markdown(
+"""
+1. Retrieve historical Bitcoin transaction outputs.
+2. Verify their current unspent status.
+3. Calculate the time elapsed since each output was created.
+4. Apply the selected dormancy and BTC-value thresholds.
+5. Display qualifying outputs and link to public blockchain records.
+
+    An old output is not automatically a whale wallet. Bitcoin
+    addresses, outputs, wallets, and beneficial owners are different
+    concepts, and ownership cannot be reliably inferred from age alone.
+    """
+)
+
+============================================================
+
+RECENT CONFIRMED BLOCKS
+
+============================================================
+
+st.markdown("---")
+
+st.markdown(
+'<div class="section-title">🧱 Recent Confirmed Blocks</div>',
+unsafe_allow_html=True,
+)
+
+if recent_blocks:
+for item in recent_blocks[:5]:
+block_hash = item.get("id")
+block_height = item.get("height")
+block_timestamp = item.get("timestamp")
+
+    with st.container(border=True):
+        st.markdown(
+            f"**Block {format_number(block_height)}**"
+        )
+
+        st.caption(
+            f"Timestamp: {format_utc(block_timestamp)}"
+        )
+
+        if block_hash:
+            safe_hash = html.escape(str(block_hash))
+
+            st.code(
+                safe_hash,
+                language="text",
+            )
+
+            st.markdown(
+                f"[View block on Mempool.space]"
+                f"({EXPLORER_BASE}/block/{safe_hash})"
+            )
+
+else:
+st.info("Recent block information is temporarily unavailable.")
+
+============================================================
+
+VIP ACCESS INFORMATION
+
+============================================================
+
+st.markdown("---")
+
+st.markdown(
+'<div class="section-title">⭐ VIP Pro Access</div>',
+unsafe_allow_html=True,
+)
+
+st.markdown(
+"""
+<div class="web-card">
+<h3 style="color:#ffffff">Premium Research Access</h3>
+<p class="muted">
+This section is reserved for future premium features,
+including historical output research, saved watchlists,
+and configurable blockchain alerts.
+</p>
+<p class="muted">
+Payment processing and account activation are not yet
+implemented. Sending Bitcoin does not automatically grant
+access through this dashboard.
+</p>
+</div>
+""",
+unsafe_allow_html=True,
+)
+
+with st.expander("VIP payment setup information"):
+st.warning(
+"Payment verification is not active. Do not send Bitcoin "
+"based solely on this demonstration interface."
+)
+
+st.caption(
+    "A production payment system must verify the transaction, "
+    "receiving address, required amount, confirmation status, "
+    "and whether the payment has already been redeemed."
+)
+
+============================================================
+
+FOOTER
+
+============================================================
+
+st.markdown(
+"""
+<div class="footer-note">
+DORMANT WHALE RADAR • BITCOIN ON-CHAIN RESEARCH<br>
+Public network information provided by mempool.space.<br>
+Blockchain research only. Not financial advice.
+</div>
+""",
+unsafe_allow_html=True,
+)
+
+============================================================
+
+AUTOMATIC REFRESH
+
+============================================================
+
+if auto_refresh:
+time.sleep(refresh_seconds)
+st.rerun()
