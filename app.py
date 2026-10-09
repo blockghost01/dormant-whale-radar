@@ -2,403 +2,567 @@ import json
 import time
 import urllib.request
 import urllib.parse
-import urllib.error
-import html
+from datetime import datetime, timezone
+
 import streamlit as st
 
 st.set_page_config(
     page_title="Dormant Whale Radar",
     page_icon="🐋",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="expanded",
 )
 
 API = "https://mempool.space/api"
 
-# Original wallet and notification configuration
+# Preserve the original Bitcoin receiving address.
 WALLET = "18t9FDLShbkgXZfiaFzSuqFCBgxTitL9aC"
-PAYMENT_EMAIL = "ayoceo938@gmail.com"
+
+# This is a display setting, not a completed payment system.
 PAYMENT_AMOUNT_BTC = 0.001
 
-def get_json(url, timeout=12):
+
+def fetch_json(url, timeout=15):
+    """Fetch public data and return None if the service is unavailable."""
     try:
-        req = urllib.request.Request(
+        request = urllib.request.Request(
             url,
-            headers={"User-Agent": "DormantWhaleRadar/1.0"}
+            headers={"User-Agent": "DormantWhaleRadar/1.0"},
         )
-        with urllib.request.urlopen(req, timeout=timeout) as res:
-            return json.loads(res.read().decode("utf-8"))
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            return json.loads(response.read().decode("utf-8"))
     except Exception:
         return None
 
-def get_text(url, timeout=12):
-    try:
-        req = urllib.request.Request(
-            url,
-            headers={"User-Agent": "DormantWhaleRadar/1.0"}
-        )
-        with urllib.request.urlopen(req, timeout=timeout) as res:
-            return res.read().decode("utf-8")
-    except Exception:
-        return None
 
 @st.cache_data(ttl=30)
-def network_data():
+def get_network():
     return {
-        "blocks": get_json(f"{API}/blocks"),
-        "mempool": get_json(f"{API}/mempool"),
-        "fees": get_json(f"{API}/v1/fees/recommended"),
+        "blocks": fetch_json(f"{API}/blocks"),
+        "mempool": fetch_json(f"{API}/mempool"),
+        "fees": fetch_json(f"{API}/v1/fees/recommended"),
+        "difficulty": fetch_json(f"{API}/v1/difficulty-adjustment"),
     }
 
+
 @st.cache_data(ttl=60)
-def bitcoin_price():
-    return get_json(
+def get_market():
+    return fetch_json(
         "https://api.coingecko.com/api/v3/coins/bitcoin/"
         "market_chart?vs_currency=usd&days=1"
     )
 
+
+@st.cache_data(ttl=60)
+def get_btc_price():
+    return fetch_json(
+        "https://api.coingecko.com/api/v3/simple/price"
+        "?ids=bitcoin&vs_currencies=usd"
+        "&include_24hr_change=true&include_last_updated_at=true"
+    )
+
+
 @st.cache_data(ttl=30)
-def address_data(address):
+def get_address(address):
     encoded = urllib.parse.quote(address, safe="")
     return {
-        "info": get_json(f"{API}/address/{encoded}"),
-        "history": get_json(f"{API}/address/{encoded}/txs"),
+        "info": fetch_json(f"{API}/address/{encoded}"),
+        "transactions": fetch_json(f"{API}/address/{encoded}/txs"),
     }
 
-def fmt(value):
+
+@st.cache_data(ttl=60)
+def get_transaction(txid):
+    return fetch_json(f"{API}/tx/{txid}")
+
+
+@st.cache_data(ttl=60)
+def get_recent_transactions():
+    """
+    Fetch transactions from recent confirmed blocks.
+    This is a recent-activity scanner, not a full historical scan.
+    """
+    blocks = fetch_json(f"{API}/blocks")
+
+    if not isinstance(blocks, list):
+        return []
+
+    found = []
+
+    for block in blocks[:3]:
+        block_hash = block.get("id")
+
+        if not block_hash:
+            continue
+
+        txids = fetch_json(f"{API}/block/{block_hash}/txids")
+
+        if not isinstance(txids, list):
+            continue
+
+        for txid in txids[:25]:
+            tx = get_transaction(txid)
+
+            if isinstance(tx, dict):
+                found.append(tx)
+
+    return found
+
+
+def number(value):
     try:
         return f"{int(value):,}"
     except (ValueError, TypeError):
         return "Unavailable"
 
+
 def btc(satoshis):
     try:
-        return f"{int(satoshis) / 100_000_000:.8f} BTC"
+        return f"{int(satoshis) / 100_000_000:.8f}"
     except (ValueError, TypeError):
         return "Unavailable"
 
-def explorer_address(address):
-    return "https://mempool.space/address/" + urllib.parse.quote(
-        address, safe=""
-    )
 
-def explorer_tx(txid):
-    return "https://mempool.space/tx/" + urllib.parse.quote(
-        txid, safe=""
-    )
+def time_utc(timestamp):
+    try:
+        return datetime.fromtimestamp(
+            int(timestamp), timezone.utc
+        ).strftime("%Y-%m-%d %H:%M UTC")
+    except (ValueError, TypeError, OSError):
+        return "Unavailable"
 
-# Styling
-st.markdown("""
-<style>
-.stApp {
-    background: #07111f;
-    color: #e6f1ff;
-}
-[data-testid="stSidebar"] {
-    background: #0b1728;
-}
-.hero {
-    padding: 24px;
-    border: 1px solid #1e4564;
-    border-radius: 16px;
-    background: linear-gradient(135deg, #102b44, #07111f);
-    margin-bottom: 20px;
-}
-.hero h1 {
-    color: #61e6ff;
-}
-div[data-testid="stMetric"] {
-    background: #0c1b2d;
-    border: 1px solid #1b3853;
-    padding: 12px;
-    border-radius: 12px;
-}
-</style>
-""", unsafe_allow_html=True)
 
-st.markdown("""
-<div class="hero">
-<h1>🐋 Dormant Whale Radar</h1>
-<p>Bitcoin on-chain monitoring and blockchain analytics terminal.</p>
-<p>Live network data · Wallet inspection · Whale research</p>
-</div>
-""", unsafe_allow_html=True)
+def address_link(address):
+    encoded = urllib.parse.quote(address, safe="")
+    return f"https://mempool.space/address/{encoded}"
+
+
+def transaction_link(txid):
+    return f"https://mempool.space/tx/{txid}"
+
+
+def block_link(block_hash):
+    return f"https://mempool.space/block/{block_hash}"
+
+
+# Design
+st.markdown(
+    """
+    <style>
+    .stApp {
+        background-color: #07111f;
+        color: #e6f1ff;
+    }
+    [data-testid="stSidebar"] {
+        background-color: #0b1728;
+    }
+    .hero {
+        padding: 24px;
+        border-radius: 16px;
+        border: 1px solid #1e4564;
+        background: linear-gradient(135deg, #102b44, #07111f);
+        margin-bottom: 20px;
+    }
+    .hero h1 {
+        color: #61e6ff;
+    }
+    div[data-testid="stMetric"] {
+        background: #0c1b2d;
+        border: 1px solid #1b3853;
+        padding: 12px;
+        border-radius: 12px;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+st.markdown(
+    """
+    <div class="hero">
+        <h1>🐋 Dormant Whale Radar</h1>
+        <p>Bitcoin On-Chain Analytics Terminal</p>
+        <p>
+        Live network monitoring · Wallet research ·
+        Large unspent outputs · Blockchain verification
+        </p>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
 with st.sidebar:
     st.header("Radar Settings")
-    dormancy_years = st.selectbox(
-        "Dormancy threshold",
-        [1, 2, 3, 5, 7, 10, 15, 20],
-        index=3,
-        format_func=lambda n: f"{n} years"
-    )
-    minimum_btc = st.number_input(
-        "Minimum BTC amount",
+
+    min_btc = st.number_input(
+        "Minimum output value (BTC)",
         min_value=0.00000001,
         value=10.0,
-        step=1.0
+        step=1.0,
+        format="%.8f",
     )
-    auto_refresh = st.checkbox("Auto-refresh", value=False)
+
+    dormancy_years = st.selectbox(
+        "Historical dormancy target",
+        [1, 2, 3, 5, 7, 10, 15, 20],
+        index=3,
+        format_func=lambda n: f"{n} years",
+    )
+
+    auto_refresh = st.checkbox("Auto-refresh dashboard", value=False)
+
     refresh_seconds = st.selectbox(
         "Refresh interval",
         [30, 60, 120, 300],
-        index=1
+        index=1,
+        format_func=lambda n: f"{n} seconds",
     )
-    if st.button("Refresh data now"):
+
+    if st.button("Refresh data now", use_container_width=True):
         st.cache_data.clear()
         st.rerun()
 
-# Network dashboard
+    st.caption("Public blockchain information only.")
+    st.caption("Never enter a wallet recovery phrase or private key.")
+
+# Network overview
 st.header("Live Bitcoin Network")
 
-data = network_data()
-blocks = data["blocks"]
-mempool = data["mempool"]
-fees = data["fees"]
+network = get_network()
+blocks = network["blocks"]
+mempool = network["mempool"]
+fees = network["fees"]
 
 latest = blocks[0] if isinstance(blocks, list) and blocks else {}
 
-a, b, c = st.columns(3)
+c1, c2 = st.columns(2)
+c3, c4 = st.columns(2)
 
-with a:
-    st.metric("Latest Block", fmt(latest.get("height")))
+with c1:
+    st.metric("Latest Block Height", number(latest.get("height")))
 
-with b:
+with c2:
     st.metric(
         "Unconfirmed Transactions",
-        fmt(mempool.get("count") if isinstance(mempool, dict) else None)
+        number(mempool.get("count") if isinstance(mempool, dict) else None),
     )
 
-with c:
+with c3:
     size = mempool.get("vsize") if isinstance(mempool, dict) else None
     st.metric(
         "Mempool Size",
         f"{size / 1_000_000:.2f} MB"
         if isinstance(size, (int, float))
-        else "Unavailable"
+        else "Unavailable",
+    )
+
+with c4:
+    st.metric(
+        "Latest Block Transactions",
+        number(latest.get("tx_count")),
     )
 
 st.caption(
     "Latest block timestamp: "
-    + (
-        time.strftime(
-            "%Y-%m-%d %H:%M:%S UTC",
-            time.gmtime(latest["timestamp"])
-        )
-        if isinstance(latest.get("timestamp"), (int, float))
-        else "Unavailable"
-    )
+    + time_utc(latest.get("timestamp"))
 )
 
-# Bitcoin market chart
-st.header("Bitcoin Market Price")
+# Market information
+st.header("Bitcoin Market")
 
-market = bitcoin_price()
+price_info = get_btc_price()
+market = get_market()
 
-if isinstance(market, dict) and market.get("prices"):
-    import pandas as pd
+if isinstance(price_info, dict) and isinstance(
+    price_info.get("bitcoin"), dict
+):
+    price = price_info["bitcoin"].get("usd")
+    change = price_info["bitcoin"].get("usd_24h_change")
+    updated = price_info["bitcoin"].get("last_updated_at")
 
-    rows = market["prices"]
-    frame = pd.DataFrame(rows, columns=["Timestamp", "Price USD"])
-    frame["Time"] = pd.to_datetime(frame["Timestamp"], unit="ms", utc=True)
-    frame = frame[["Time", "Price USD"]]
+    if isinstance(price, (int, float)):
+        st.metric(
+            "Current reported BTC price",
+            f"${price:,.2f}",
+            (
+                f"{change:+.2f}% over 24 hours"
+                if isinstance(change, (int, float))
+                else None
+            ),
+        )
 
-    st.line_chart(frame, x="Time", y="Price USD")
-
-    current_price = float(frame["Price USD"].iloc[-1])
-    previous_price = (
-        float(frame["Price USD"].iloc[-2])
-        if len(frame) > 1 else current_price
-    )
-
-    st.metric(
-        "Latest Available BTC Price",
-        f"${current_price:,.2f}",
-        f"{current_price - previous_price:+,.2f} since previous point"
-    )
-    st.caption("Source: CoinGecko. Prices may be delayed.")
+        st.caption(
+            "Provider update time: " + time_utc(updated)
+            if updated
+            else "Provider update timestamp unavailable."
+        )
+    else:
+        st.warning("Current price is unavailable.")
 else:
-    st.warning("Market-price service is temporarily unavailable.")
+    st.warning("Market-price provider is temporarily unavailable.")
 
-# Transaction fees
-st.header("Transaction Fee Estimates")
+if isinstance(market, dict) and isinstance(market.get("prices"), list):
+    try:
+        import pandas as pd
+
+        price_rows = market["prices"]
+
+        chart = pd.DataFrame(
+            price_rows,
+            columns=["Timestamp", "Price USD"],
+        )
+
+        chart["Time"] = pd.to_datetime(
+            chart["Timestamp"], unit="ms", utc=True
+        )
+
+        chart = chart[["Time", "Price USD"]]
+
+        st.subheader("Reported BTC Price History — 24 Hours")
+        st.line_chart(chart, x="Time", y="Price USD")
+    except Exception:
+        st.info("The chart could not be rendered. Try refreshing the page.")
+
+# Fees
+st.header("Bitcoin Transaction Fees")
 
 if isinstance(fees, dict):
-    x, y, z = st.columns(3)
-    with x:
-        st.metric("High Priority", f"{fmt(fees.get('fastestFee'))} sat/vB")
-    with y:
-        st.metric("Medium Priority", f"{fmt(fees.get('halfHourFee'))} sat/vB")
-    with z:
-        st.metric("Low Priority", f"{fmt(fees.get('hourFee'))} sat/vB")
+    f1, f2, f3 = st.columns(3)
+
+    with f1:
+        st.metric(
+            "High Priority",
+            f"{number(fees.get('fastestFee'))} sat/vB",
+        )
+
+    with f2:
+        st.metric(
+            "Medium Priority",
+            f"{number(fees.get('halfHourFee'))} sat/vB",
+        )
+
+    with f3:
+        st.metric(
+            "Low Priority",
+            f"{number(fees.get('hourFee'))} sat/vB",
+        )
 else:
     st.warning("Fee estimates are unavailable.")
 
-# Blocks
+# Recent blocks
 st.header("Recent Confirmed Blocks")
 
 if isinstance(blocks, list) and blocks:
     for block in blocks[:6]:
-        block_hash = block.get("id", "")
+        block_hash = block.get("id")
+
         st.markdown(
-            f"**Block {fmt(block.get('height'))}** · "
-            f"Transactions: {fmt(block.get('tx_count'))}"
+            f"**Block {number(block.get('height'))}** · "
+            f"Transactions: {number(block.get('tx_count'))} · "
+            f"{time_utc(block.get('timestamp'))}"
         )
+
         if block_hash:
             st.markdown(
-                f"[Inspect block](https://mempool.space/block/{block_hash})"
+                f"[Verify block in explorer]({block_link(block_hash)})"
             )
+
         st.divider()
 else:
-    st.warning("Block data is unavailable.")
+    st.warning("Block information is unavailable.")
 
-# Wallet scanner
-st.header("Bitcoin Wallet Scanner")
+# Wallet inspection
+st.header("Bitcoin Wallet Inspector")
 
-address = st.text_input("Public Bitcoin address", value=WALLET)
+wallet = st.text_input(
+    "Public Bitcoin address",
+    value=WALLET,
+)
 
-if st.button("Scan wallet", type="primary"):
-    address = address.strip()
+if st.button("Inspect wallet", type="primary"):
+    result = get_address(wallet.strip())
 
-    if not address or len(address) > 100:
-        st.error("Enter a valid public Bitcoin address.")
+    info = result.get("info")
+    history = result.get("transactions")
+
+    if isinstance(info, dict):
+        chain = info.get("chain_stats", {})
+        pending = info.get("mempool_stats", {})
+
+        confirmed_balance = (
+            chain.get("funded_txo_sum", 0)
+            - chain.get("spent_txo_sum", 0)
+        )
+
+        pending_balance = (
+            pending.get("funded_txo_sum", 0)
+            - pending.get("spent_txo_sum", 0)
+        )
+
+        a, b, c = st.columns(3)
+
+        a.metric("Confirmed Balance", f"{btc(confirmed_balance)} BTC")
+        b.metric("Pending Balance Change", f"{btc(pending_balance)} BTC")
+        c.metric(
+            "Confirmed Transactions",
+            number(chain.get("tx_count")),
+        )
+
+        st.markdown(
+            f"[Open address in blockchain explorer]({address_link(wallet.strip())})"
+        )
+
+        st.subheader("Recent Address Transactions")
+
+        if isinstance(history, list) and history:
+            for tx in history[:10]:
+                txid = tx.get("txid", "")
+                status = tx.get("status", {})
+
+                state = (
+                    "Confirmed"
+                    if status.get("confirmed")
+                    else "Unconfirmed"
+                )
+
+                st.write(f"{state}: `{txid}`")
+
+                if txid:
+                    st.markdown(
+                        f"[Verify transaction]({transaction_link(txid)})"
+                    )
+        else:
+            st.info("No recent transactions were returned.")
     else:
-        result = address_data(address)
-        info = result.get("info")
-        history = result.get("history")
+        st.error("Wallet lookup failed. Check the address and try again.")
 
-        if isinstance(info, dict):
-            chain = info.get("chain_stats", {})
-            pending = info.get("mempool_stats", {})
+# Recent large unspent outputs
+st.header("Large Unspent Output Scanner")
 
-            balance = (
-                chain.get("funded_txo_sum", 0)
-                - chain.get("spent_txo_sum", 0)
+st.write(
+    "This scanner inspects outputs in recent confirmed transactions. "
+    "It does not search the entire historical blockchain."
+)
+
+if st.button("Scan recent transactions"):
+    with st.spinner("Retrieving recent transactions and checking outputs..."):
+        transactions = get_recent_transactions()
+
+    matches = []
+
+    for tx in transactions:
+        txid = tx.get("txid", "")
+        status = tx.get("status", {})
+
+        if not status.get("confirmed"):
+            continue
+
+        for index, output in enumerate(tx.get("vout", [])):
+            value = output.get("value", 0)
+            address = output.get("scriptpubkey_address")
+
+            if not isinstance(value, int):
+                continue
+
+            if value < int(min_btc * 100_000_000):
+                continue
+
+            if not address:
+                continue
+
+            matches.append({
+                "txid": txid,
+                "output_index": index,
+                "value": value,
+                "address": address,
+                "block_time": status.get("block_time"),
+            })
+
+    if matches:
+        st.success(
+            f"Found {len(matches)} matching outputs in the inspected "
+            "recent transactions."
+        )
+
+        st.caption(
+            "These are large outputs from recent confirmed transactions. "
+            "Their present unspent status has not yet been independently "
+            "verified by this scanner, and they are not proven dormant whales."
+        )
+
+        for item in matches[:50]:
+            st.markdown(
+                f"**{btc(item['value'])} BTC** · "
+                f"Transaction output #{item['output_index']}"
             )
-            pending_balance = (
-                pending.get("funded_txo_sum", 0)
-                - pending.get("spent_txo_sum", 0)
-            )
 
-            x, y, z = st.columns(3)
-            x.metric("Confirmed Balance", btc(balance))
-            y.metric("Pending Balance Change", btc(pending_balance))
-            z.metric("Confirmed Transactions", fmt(chain.get("tx_count")))
+            st.caption(
+                "Transaction time: " + time_utc(item["block_time"])
+            )
 
             st.markdown(
-                f"[Open wallet in blockchain explorer]({explorer_address(address)})"
+                f"[Inspect transaction]({transaction_link(item['txid'])})"
             )
 
-            st.subheader("Recent Transactions")
+            st.divider()
+    else:
+        st.info(
+            "No matching outputs were found in the transactions inspected. "
+            "Try a smaller minimum or scan again later."
+        )
 
-            if isinstance(history, list) and history:
-                for tx in history[:10]:
-                    txid = tx.get("txid", "")
-                    status = tx.get("status", {})
-                    label = (
-                        "Confirmed"
-                        if status.get("confirmed")
-                        else "Unconfirmed"
-                    )
-                    st.write(f"{label}: {txid}")
-                    if txid:
-                        st.markdown(f"[View transaction]({explorer_tx(txid)})")
-            else:
-                st.info("No recent transactions returned.")
-        else:
-            st.error("Address lookup failed. Check the address and retry.")
+st.subheader("Historical Dormancy Status")
 
-# Payment details
-st.header("Bitcoin Payment")
+st.info(
+    f"Selected target: {dormancy_years} years. "
+    f"Minimum value: {min_btc:.8f} BTC."
+)
+
+st.warning(
+    "A genuine historical dormant-output scan still requires historical "
+    "blockchain indexing and verification of whether each output remains "
+    "unspent. The recent-output scan above does not complete that task."
+)
+
+# Payment information
+st.header("Bitcoin Payment Information")
 
 st.write("Configured receiving address:")
 st.code(WALLET)
 
-st.write(f"Configured payment amount: {PAYMENT_AMOUNT_BTC:.3f} BTC")
+st.write(f"Displayed payment amount: {PAYMENT_AMOUNT_BTC:.3f} BTC")
 
-qr_url = (
-    "https://api.qrserver.com/v1/create-qr-code/"
-    f"?size=220x220&data=bitcoin:{WALLET}"
-    f"%3Famount%3D{PAYMENT_AMOUNT_BTC}"
+qr_data = urllib.parse.quote(
+    f"bitcoin:{WALLET}?amount={PAYMENT_AMOUNT_BTC}",
+    safe="",
 )
 
-st.image(qr_url, caption="Bitcoin receiving address QR code")
+st.image(
+    "https://api.qrserver.com/v1/create-qr-code/"
+    f"?size=220x220&data={qr_data}",
+    caption="QR code for the configured Bitcoin payment",
+)
 
 st.markdown(
-    f"[Inspect receiving address on the blockchain]({explorer_address(WALLET)})"
-)
-
-st.caption(
-    "Never send funds until you have independently confirmed the address "
-    "and payment terms."
-)
-
-st.subheader("Submit Transaction ID")
-
-txid_input = st.text_input("Bitcoin transaction ID")
-contact_input = st.text_input("Contact handle or email")
-
-if st.button("Check payment transaction"):
-    txid = txid_input.strip()
-
-    if len(txid) != 64 or any(ch not in "0123456789abcdefABCDEF" for ch in txid):
-        st.error("Enter a valid 64-character Bitcoin transaction ID.")
-    else:
-        tx = get_json(f"{API}/tx/{txid}")
-
-        if not isinstance(tx, dict):
-            st.error("Transaction not found or the blockchain service is unavailable.")
-        else:
-            status = tx.get("status", {})
-            outputs = tx.get("vout", [])
-
-            received_sats = sum(
-                int(output.get("value", 0))
-                for output in outputs
-                if output.get("scriptpubkey_address") == WALLET
-            )
-
-            st.write("Transaction:", txid)
-            st.write("Amount sent to configured address:", btc(received_sats))
-            st.write(
-                "Confirmation status:",
-                "Confirmed" if status.get("confirmed") else "Pending"
-            )
-
-            required_sats = int(PAYMENT_AMOUNT_BTC * 100_000_000)
-
-            if received_sats >= required_sats and status.get("confirmed"):
-                st.success("The transaction meets the configured amount and confirmation checks.")
-                st.info(
-                    "This single-file version does not yet store payment claims, "
-                    "prevent duplicate claims persistently, or send email notifications."
-                )
-            elif received_sats >= required_sats:
-                st.warning("The required amount appears in the transaction, but confirmation is pending.")
-            else:
-                st.error("The transaction does not show the configured amount sent to the receiving address.")
-
-            if contact_input.strip():
-                st.caption(
-                    "Your contact information has not been emailed or saved by this version."
-                )
-
-# Dormancy scanner status
-st.header("Dormant Whale Research")
-
-st.info(
-    f"Selected threshold: {dormancy_years} years. "
-    f"Minimum amount: {minimum_btc:,.8f} BTC."
+    f"[Verify receiving address]({address_link(WALLET)})"
 )
 
 st.warning(
-    "Global historical dormant-output scanning is not implemented in this "
-    "single-file version. Address lookup does not scan the entire blockchain."
+    "This version does not automatically verify customer payments, "
+    "send payment emails, store payment records, prevent duplicate claims, "
+    "or activate paid accounts. Do not advertise automatic payment "
+    "verification until those features are implemented and tested."
 )
 
 # Footer
 st.divider()
-st.caption("Dormant Whale Radar · Bitcoin On-Chain Analytics")
-st.caption("Market and blockchain data depend on external service availability.")
+st.caption(
+    "Dormant Whale Radar · Independent Bitcoin on-chain analytics"
+)
+st.caption(
+    "Market and blockchain data are supplied by external providers. "
+    "This dashboard does not provide investment advice."
+)
 
 if auto_refresh:
     time.sleep(refresh_seconds)
