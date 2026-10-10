@@ -132,21 +132,27 @@ def load_scanner_state():
     """Load transaction IDs already alerted in this app instance."""
     try:
         if not os.path.exists(SCANNER_STATE_FILE):
-            return {"alerted_txids": []}
+            return {"alerted_txids": [], "alerted_payment_outputs": []}
 
         with open(SCANNER_STATE_FILE, "r", encoding="utf-8") as file:
             state = json.load(file)
 
         if not isinstance(state, dict):
-            return {"alerted_txids": []}
+            return {"alerted_txids": [], "alerted_payment_outputs": []}
 
         txids = state.get("alerted_txids", [])
+        payments = state.get("alerted_payment_outputs", [])
         if not isinstance(txids, list):
             txids = []
+        if not isinstance(payments, list):
+            payments = []
 
-        return {"alerted_txids": [str(txid) for txid in txids]}
+        return {
+            "alerted_txids": [str(txid) for txid in txids],
+            "alerted_payment_outputs": [str(item) for item in payments],
+        }
     except Exception:
-        return {"alerted_txids": []}
+        return {"alerted_txids": [], "alerted_payment_outputs": []}
 
 
 def save_scanner_state(state):
@@ -244,17 +250,28 @@ def get_incoming_payments(address, reference_btc=PAYMENT_AMOUNT_BTC):
             seen.add(key)
             confirmed = bool(status.get("confirmed"))
             block_height = status.get("block_height")
-            confirmations = max(0, int(tip_height) - int(block_height) + 1) if confirmed and isinstance(tip_height, int) and isinstance(block_height, int) else 0
+            confirmations = (
+                max(0, int(tip_height) - int(block_height) + 1)
+                if confirmed and isinstance(tip_height, int) and isinstance(block_height, int)
+                else 0
+            )
             amount_btc = value / SATOSHIS_PER_BTC
+            if confirmations >= PAYMENT_CONFIRMATIONS_REQUIRED:
+                payment_status = "Confirmed"
+            elif confirmed:
+                payment_status = "Confirmed; confirmation count unavailable"
+            else:
+                payment_status = "Unconfirmed"
             payments.append({
                 "Transaction": txid,
                 "Output index": index,
                 "Amount (BTC)": amount_btc,
                 "Confirmations": confirmations,
-                "Status": "Confirmed" if confirmations >= PAYMENT_CONFIRMATIONS_REQUIRED else ("Unconfirmed" if not confirmed else "Confirmed; tip unavailable"),
+                "Status": payment_status,
                 "Matches reference amount": abs(amount_btc - reference_btc) < 0.00000001,
                 "Time (UTC)": time_utc(status.get("block_time")),
                 "Explorer": transaction_link(txid) if txid else "",
+                "Alert key": f"{txid}:{index}",
             })
     payments.sort(key=lambda item: item["Time (UTC)"], reverse=True)
     return payments
@@ -292,7 +309,8 @@ def get_recent_transactions():
     return found
 
 
-# ============================================================# DORMANT WHALE DETECTION
+# ============================================================
+# DORMANT WHALE DETECTION
 # ============================================================
 
 def check_dormant_whale_transaction(tx, min_whale_btc, dormancy_years):
@@ -349,16 +367,21 @@ def check_dormant_whale_transaction(tx, min_whale_btc, dormancy_years):
             continue
 
         previous_outputs = previous_tx.get("vout", [])
-        if isinstance(previous_outputs, list) and isinstance(previous_output_index, int):
-            if 0 <= previous_output_index < len(previous_outputs):
-                exact_output = previous_outputs[previous_output_index]
-                if isinstance(exact_output, dict):
-                    exact_value = exact_output.get("value")
-                    exact_address = exact_output.get("scriptpubkey_address")
-                    if isinstance(exact_value, int) and exact_value != value_satoshis:
-                        continue
-                    if exact_address and exact_address != address:
-                        continue
+        # Only report a candidate when the exact referenced output is available
+        # and its value/address can be checked against the spending transaction.
+        if not isinstance(previous_outputs, list) or not isinstance(previous_output_index, int):
+            continue
+        if previous_output_index < 0 or previous_output_index >= len(previous_outputs):
+            continue
+        exact_output = previous_outputs[previous_output_index]
+        if not isinstance(exact_output, dict):
+            continue
+        exact_value = exact_output.get("value")
+        exact_address = exact_output.get("scriptpubkey_address")
+        if not isinstance(exact_value, int) or exact_value != value_satoshis:
+            continue
+        if exact_address != address:
+            continue
 
         if previous_block_time > threshold_timestamp:
             continue
@@ -375,7 +398,7 @@ def check_dormant_whale_transaction(tx, min_whale_btc, dormancy_years):
     return matches
 
 
-def scan_dormant_whale_transaction(tx, min_whale_btc, dormancy_years):
+def scan_dormant_whale_transaction(tx, min_whale_btc, dormancy_years, verified_matches=None):
     """Send an alert for a qualifying transaction if Telegram is configured."""
     if not isinstance(tx, dict):
         return 0
@@ -389,7 +412,7 @@ def scan_dormant_whale_transaction(tx, min_whale_btc, dormancy_years):
     if txid in alerted_txids:
         return 0
 
-    matches = check_dormant_whale_transaction(
+    matches = verified_matches if verified_matches is not None else check_dormant_whale_transaction(
         tx, min_whale_btc, dormancy_years
     )
     if not matches:
@@ -478,7 +501,8 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# ============================================================# SIDEBAR SETTINGS
+# ============================================================
+# SIDEBAR SETTINGS
 # ============================================================
 
 with st.sidebar:
@@ -617,7 +641,7 @@ if isinstance(fees, dict):
 else:
     st.warning("Transaction fee data is temporarily unavailable.")
 
-# ============================================================
+# ==========================================================
 # NETWORK DIFFICULTY
 # ============================================================
 
@@ -670,7 +694,8 @@ if isinstance(blocks, list) and blocks:
 else:
     st.info("Recent block information is temporarily unavailable.")
 
-# ============================================================# WALLET INSPECTOR
+# ============================================================
+# WALLET INSPECTOR
 # ============================================================
 
 st.header("Bitcoin Wallet Inspector")
@@ -741,8 +766,7 @@ if st.button("Inspect Wallet", use_container_width=True):
         else:
             st.error("Wallet data could not be retrieved. Check the address and try again.")
 
-# ============================================================
-# LARGE OUTPUT RESEARCH
+# ============================================================# LARGE OUTPUT RESEARCH
 # ============================================================
 
 st.header("Large Bitcoin Output Research")
@@ -836,7 +860,7 @@ if st.button("Run Dormant Whale Scan", type="primary", use_container_width=True)
                 })
             if matches:
                 total_alerts += scan_dormant_whale_transaction(
-                    tx, min_btc, dormancy_years
+                    tx, min_btc, dormancy_years, verified_matches=matches
                 )
             if total:
                 progress_bar.progress((index + 1) / total)
@@ -896,6 +920,41 @@ st.caption(
 if st.button("Check Incoming Payments", type="primary", use_container_width=True):
     with st.spinner("Checking recent address transactions and confirmation status..."):
         payment_rows = get_incoming_payments(WALLET)
+
+    # Alert once per output key, not once per page rerun. The state file may be
+    # ephemeral on Streamlit Community Cloud, so external durable storage may
+    # still be needed for guaranteed deduplication across restarts.
+    state = load_scanner_state()
+    already_alerted = set(state.get("alerted_payment_outputs", []))
+    newly_alerted = []
+    for row in payment_rows:
+        alert_key = row.get("Alert key")
+        txid = row.get("Transaction")
+        if not alert_key or not txid or alert_key in already_alerted:
+            continue
+        status = row.get("Status", "Unknown")
+        amount = row.get("Amount (BTC)", 0.0)
+        matches_reference = bool(row.get("Matches reference amount"))
+        message = "\n".join([
+            "DORMANT WHALE RADAR — INCOMING BITCOIN OUTPUT",
+            f"Address: {WALLET}",
+            f"Amount: {amount:.8f} BTC",
+            f"Reference amount match: {'Yes' if matches_reference else 'No'}",
+            f"Status: {status}",
+            f"Confirmations: {row.get('Confirmations', 0)}",
+            f"Transaction: {txid}",
+            f"Explorer: {transaction_link(txid)}",
+            "Note: this is an on-chain output observation, not proof of customer identity or an order.",
+        ])
+        if send_telegram_alert(message):
+            already_alerted.add(alert_key)
+            newly_alerted.append(alert_key)
+
+    if newly_alerted:
+        state["alerted_payment_outputs"] = sorted(already_alerted)[-5000:]
+        save_scanner_state(state)
+        st.success(f"Telegram notification sent for {len(newly_alerted)} newly detected payment output(s).")
+
     if payment_rows:
         import pandas as pd
         confirmed_rows = [row for row in payment_rows if row["Status"] == "Confirmed"]
@@ -905,7 +964,7 @@ if st.button("Check Incoming Payments", type="primary", use_container_width=True
         p2.metric("Confirmed Outputs", number(len(confirmed_rows)))
         p3.metric("Confirmed Reference-Amount Outputs", number(len(matching_rows)))
         st.dataframe(
-            pd.DataFrame([{k: v for k, v in row.items() if k != "Explorer"} for row in payment_rows]),
+            pd.DataFrame([{k: v for k, v in row.items() if k not in ("Explorer", "Alert key")} for row in payment_rows]),
             use_container_width=True,
             hide_index=True,
         )
@@ -914,8 +973,8 @@ if st.button("Check Incoming Payments", type="primary", use_container_width=True
                 st.markdown(f"[Open transaction {row['Transaction'][:18]}…]({row['Explorer']})")
         st.warning(
             "A matching amount alone does not identify a customer or payment order. "
-            "This page does not automatically activate accounts, and this app's local filesystem "
-            "is not a durable payment ledger."
+            "Notifications are sent when you run this check; this is not a background watcher. "
+            "The app's local filesystem is not a durable payment ledger."
         )
     else:
         st.info(
@@ -930,7 +989,7 @@ if st.button("Check Incoming Payments", type="primary", use_container_width=True
 st.divider()
 st.caption(
     "Dormant Whale Radar · Public blockchain research tool. "
-    "Scanner coverage is sampled, not whole-chain; payment records are fetched from public address history and are not a durable ledger."
+    "Scanner coverage is sampled, not whole-chain; payment alerts run when you check payments, and local history is not a durable ledger."
 )
 
 if auto_refresh:
